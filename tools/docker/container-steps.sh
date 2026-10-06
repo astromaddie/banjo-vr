@@ -73,9 +73,10 @@ step_vrtest() {
 	# The VR bridge's host unit tests (src/vr/tests), on their own: no ROM, no recompiled code.
 	cmake -S src/vr/tests -B "$build/vrtest" -GNinja -DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_C_COMPILER=clang-15 -DCMAKE_CXX_COMPILER=clang++-15
-	cmake --build "$build/vrtest"
+	cmake --build "$build/vrtest" -j "$jobs"
 	"$build/vrtest/dk64vr_tests"
 	"$build/vrtest/banjo_profile_tests"
+	"$build/vrtest/comfort_turn_tests"
 	bash tools/steam_frame/test-vr-diag.sh "$build/vrtest"
 }
 

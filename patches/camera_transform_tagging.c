@@ -229,6 +229,8 @@ RECOMP_PATCH void ncCamera_update(void) {
         camType = 0;
     }
 
+    vr_apply_comfort_turn(camType);
+
     switch (camType) {
     case CAMERA_TYPE_2_DYNAMIC://dynamic viewport position
         ncDynamicCamera_update();

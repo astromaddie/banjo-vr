@@ -37,8 +37,8 @@ reports, culling, profile) is described in [VR_GAME_SIDE.md](VR_GAME_SIDE.md).
 
 ```sh
 BK_ROM="/path/to/Banjo-Kazooie (USA).z64" tools/docker/build-linux.sh all   # flat
-JOBS=5 BK_VR=1 tools/docker/build-linux.sh build && BK_VR=1 tools/docker/build-linux.sh package \
-  && BK_VR=1 tools/docker/build-linux.sh abi                                # VR
+JOBS=4 BK_VR=1 tools/docker/build-linux.sh build && JOBS=4 BK_VR=1 tools/docker/build-linux.sh package \
+  && JOBS=4 BK_VR=1 tools/docker/build-linux.sh abi                                # VR
 BUILD_DIR=build-vrtest tools/docker/build-linux.sh vrtest                   # host tests
 FRAME_HOST=steamos@192.168.1.31 tools/steam_frame/deploy.sh --rom "/path/to/rom.z64"
 ```
@@ -67,10 +67,12 @@ libatomic bundled, libstdc++ static; the ABI check passes the glibc 2.35 floor.
     camera (the eye camera only replaces projections in the camera groups). Unattended dump:
     Grunty's 3D portrait and dialogue box in the HUD image, absent from the eyes.
   - `billboard_groups`: camera-facing billboards (section 4a).
-  - `takes_comfort_turn` = 0. Banjo has no camera-heading patch for `dk64vr_take_turn`, so the
-    right stick defaults to the game's own C-left/C-right camera swing (`right_stick_x` =
-    camera). Setting it back to "Comfort turn" in the VR menu would show a snap that unwinds
-    after 8 s, because the game camera never follows.
+  - `takes_comfort_turn` = 1. The free-camera patch consumes `recomp_vr_take_turn(applicable)`
+    and changes Banjo's R-look target yaw. Right stick defaults to comfort turn, snap 45 degrees;
+    `right_stick_x = camera` keeps the native C-left/C-right swing.
+  - `reports_turn_applicability` = 1. The game reports rejection for forced/locked cameras;
+    the host suppresses new turns and clears compensation there. `cam_at` publishes the actual
+    native focus in active third-person play, so the eye orbit rotates around Banjo. Section 5d.
 - **Camera cut distance**: 4 m in game units from the profile (400 units for Banjo; DK64 60).
 - **Controls**: BanjoRecomp's gamepad defaults are the same as DK64 Recompiled's (both come
   from the same `set_control_defaults`), so the Frame map is identical: A jump/fly up, X attack
@@ -78,7 +80,7 @@ libatomic bundled, libstdc++ static; the ABI check passes the glibc 2.35 floor.
   Talon Trot/Wonderwing), LB C-down (zoom; LT+LB egg backwards), RB C-up (first person; LT+RB
   egg forwards), Menu Start, R3 N64 L, D-pad N64 D-pad (unused by Banjo), left stick N64 stick.
   System layer as the standard: View short = recomp menu, View hold 1 s = recentre, Menu + View
-  0.5 s = VR settings menu. Right stick X: the game camera swing (above); right stick Y: nothing.
+  0.5 s = VR settings menu. Right stick X: comfort turn (above); right stick Y: nothing.
 - **Pause**: `src/vr/game/vr_control.cpp` implements `dk64vr_control.h` (pause flag, turn queue,
   HUD diagnostic); the game thread waits in `recomp_vr_publish_game_state` while the host pauses
   it (headset off, focus lost, VR settings menu), as in DK64.
@@ -131,6 +133,104 @@ compensating `gEXSetViewMatrixFloat`; RT64 folds the rotations into its view and
 view matrix supplies the translation, so the eye camera sees an ordinary world-to-view matrix and
 the DK64 eye injection applies unchanged.
 
+### 5d. Comfort turn and coordinator device check
+
+Source details and camera exclusions: [VR_GAME_SIDE.md](VR_GAME_SIDE.md#comfort-turning).
+The game applies whole-degree requests before its native camera update: R-look target
+`D_8037DBA4`, current radial yaw `D_8037DBA8`, with unwrapped debt to guide the wrapped native
+follower. A 45-degree change takes **1.333 s** to within 0.01 degrees in the original-ROM
+30 Hz follower with controlled collision-free inputs. Camera mode interpolation and presentation
+smoothing add their own convergence; device timing remains unmeasured. The host's pure
+`ComfortTurn` (`src/vr/bridge/dk64vr_turn.*`) holds the shown unwrapped heading while the game
+eases. `orbitViewCorrection` uses the sampled real native focus and the main `0x1000` camera,
+after camera smoothing/offsets. Its single camera-space correction is applied to both world
+and sky projections; the sky's camera-relative origin must not orbit about an absolute world
+focus independently. Movement is projected through the same angle. A smooth hold runs at the
+requested rate, stopping on release.
+An abandoned multi-revolution turn unwinds by the equivalent shortest angle over 0.4 s,
+preserving its physical starting view while avoiding extra spins.
+
+The source milestone passes `vrtest` (8,930 existing checks plus 1,420 new comfort/import checks),
+`tools/vr/test_game_side.sh`, and `tools/vr/test_generated.sh` (actual N64Recomp functions,
+original-ROM inactive camera dispatch, native R-look follower, water/flight retention and
+rejection). Both VR and flat Linux ARM64 configurations compile. The VR package passes the
+ABI check. Flat mode reuses the same build tree with `BK_VR=0`, then VR is rebuilt and repackaged;
+no duplicate build-tree copies. This is host/build evidence only. No headset was accessed.
+
+After integrating this branch and the billboard branch, the coordinator must build/package
+that exact merged source and book the Frame with its `frame-lock.sh` before deploy/run. With
+BanjoVR installed and the ROM/save present, use the existing Steam-title unattended helper:
+
+```sh
+# Book the Frame first. The helper writes one-shot vr-diag, starts through Steam, and fetches logs.
+FRAME_HOST=steamos@192.168.1.31 tools/steam_frame/unattended.sh 300 build/turn-snap-device \
+  force_render=1 diag_autostart=240 diag_exit_seconds=290 diag_camera_log=1 \
+  right_stick_x=turn turn_mode=snap snap_angle=45 snap_blink=0 \
+  diag_turn_stick=1 diag_snap_seconds=0 diag_camera_seconds=0 \
+  diag_yaw=0 camera_smoothing=medium camera_lower=0 camera_closer=0
+FRAME_HOST=steamos@192.168.1.31 tools/steam_frame/unattended.sh 300 build/turn-smooth-device \
+  force_render=1 diag_autostart=240 diag_exit_seconds=290 diag_camera_log=1 \
+  right_stick_x=turn turn_mode=smooth smooth_turn_speed=120 snap_blink=0 \
+  diag_turn_stick=1 diag_snap_seconds=0 diag_camera_seconds=0 \
+  diag_yaw=0 camera_smoothing=medium camera_lower=0 camera_closer=0
+```
+
+Exact one-shot `~/.local/share/BanjoRecompiled/vr-diag` lines for the snap run (the helper's
+`key=value` arguments become these environment overrides):
+
+```text
+ARGS=--game bk
+BK_VR_FORCE_RENDER=1
+BK_VR_DIAG_AUTOSTART=240
+BK_VR_DIAG_EXIT_SECONDS=290
+BK_VR_DIAG_CAMERA_LOG=1
+BK_VR_RIGHT_STICK_X=turn
+BK_VR_TURN_MODE=snap
+BK_VR_SNAP_ANGLE=45
+BK_VR_SNAP_BLINK=0
+BK_VR_DIAG_TURN_STICK=1
+BK_VR_DIAG_SNAP_SECONDS=0
+BK_VR_DIAG_CAMERA_SECONDS=0
+BK_VR_DIAG_YAW=0
+BK_VR_CAMERA_SMOOTHING=medium
+BK_VR_CAMERA_LOWER=0
+BK_VR_CAMERA_CLOSER=0
+```
+
+For the smooth run change `BK_VR_TURN_MODE=smooth` and add
+`BK_VR_SMOOTH_TURN_SPEED=120`. `diag_turn_stick=1` holds X for 4 s, releases for 4 s, and repeats
+only during applicable stereo gameplay. With snap, there is one 45-degree step per hold.
+Use a save/autostart that reaches **Spiral Mountain**, and require `[vr-scene] ... -> gameplay`
+and `[vr-turn] camera applicable` before measuring. If it never reaches gameplay, the check
+has not run; intro/cinema logs are not turn evidence.
+
+Proof in the per-display `[vr-cam] turn f N applicable A game G target T remaining R shown S`
+(with post-orbit `pos` and sampled `focus` following): S is measured from the rendered
+projection's post-orbit view matrix, unwrapped near G + R, rather than echoing the requested
+target. World and sky share the heading correction. Position uses the main camera's world
+origin even when the first rendered projection is the rebased sky.
+
+- On snap, consecutive **f N / f N+1** with A=1 must change S by **-45.000 degrees** (right),
+  while G changes only by the native camera's small step. The signed relation is S = G + R;
+  T changes by -45.000 and stays there during that hold. Head pose `diag_yaw=0` prevents a
+  synthetic head turn from explaining it. `[vr-turn] accepted 45 deg ...` proves the native
+  heading write. The next several seconds must show R shrinking toward zero and G approaching
+  T, followed by `turn: game camera arrived`, without an 8-second timeout/unwind.
+- On smooth, S must change by **-120 * (t[N+1]-t[N]) degrees** during the steady hold:
+  about **-1.667 degrees/frame at 72 Hz**, **-1.000 at 120 Hz**. Use t from the matching
+  `[vr-cam] f N t ... raw yaw ... out yaw ...` line and actual display period. Over a 4-second
+  hold T moves -480 degrees, crossing a wrap; game G stays unwrapped too. On
+  `[vr-cam] diag: right stick released`, T and S stop immediately while G catches up and R
+  falls. The window's `[vr-cam] shown: yaw rate ... turn requested ...` is corroborating
+  evidence; a mixed held/released 10-second window will not average -120 deg/s.
+- Check native swing separately with `right_stick_x=camera` and a real right stick (the synthetic
+  comfort diagnostic intentionally does nothing in that setting). Enter a fixed/node camera,
+  first person, pause and the final arena: no accepted heading write; when stereo turn lines
+  continue, A=0 / `camera not applicable` and R=0. Panel/cinema/frozen routing can stop those
+  lines entirely, so check the scene/routing/pause logs and absence of accepted turns there.
+  Real input, collisions during compensated orbit, transformations/flight in
+  actual maps and worn comfort remain acceptance work.
+
 ## 6. Status
 
 "Unattended" means a Steam launch on the Frame (`steam.pipe`) with `force_render`, checked in logs
@@ -150,7 +250,7 @@ and dumps; it never pressed a real button and nobody wore it.
 | VR settings menu (quick menu, full panel, all tabs) | verified unattended (`diag_vr_menu_at` tour over the frozen cinema; "Banjo 1.4 m", right stick "Game camera"); real input headset-unverified |
 | Recomp menus on the panel, pointer | built (shared code); not exercised on Banjo |
 | Billboard sprites facing the eye, not the game camera | verified unattended (section 4a; host tests; Spiral Mountain: the cliff statue sprite upright and facing the eyes, the only billboard in that view; particles not seen on the device) |
-| Comfort turn | off by default (no camera patch); game camera swing on the right stick |
+| Comfort turn (snap 45°, smooth orbit, native camera follows) | host/import and generated-MIPS tests pass; ARM64 build/package and flat compilation verified; device/worn acceptance pending |
 | Worn | never |
 
 ### 6a. Measured (unattended, off-head, Steam launch, 2026-10-06)

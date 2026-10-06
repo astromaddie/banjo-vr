@@ -32,6 +32,8 @@ typedef struct vr_game_profile_ext {
     // the right stick's comfort turn works. Zero: the right stick defaults to the game's own
     // C-left / C-right camera swing (right_stick_x = camera).
     int takes_comfort_turn;
+    // Game reports whether its current camera accepts turning; cam_at is its orbit focus.
+    int reports_turn_applicability;
     // Camera-facing billboards the game tags by matrix group: in the eye passes RT64 turns them to
     // face the point between the eyes instead of the flat game camera (setting billboard_facing).
     // NULL/0: none (DK64).

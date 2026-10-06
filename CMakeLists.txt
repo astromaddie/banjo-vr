@@ -380,6 +380,7 @@ target_sources(BanjoRecompiled PRIVATE ${SOURCES})
 if (BK_VR)
     set(BK_VR_SOURCES
         ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_math.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_turn.cpp
         ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_camsmooth.cpp
         ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_foveation.cpp
         ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_sched.cpp

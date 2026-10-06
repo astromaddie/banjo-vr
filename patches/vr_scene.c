@@ -13,6 +13,7 @@ s32 map_get(void);
 s32 player_is_present(void);
 s32 level_get(void);
 s32 getGameMode(void);
+void func_802C02D4(f32 target[3]);
 
 static VrGameState vr_state;
 static u32 vr_frame;
@@ -34,6 +35,14 @@ void vr_capture_camera(f32 near, f32 far) {
     vr_state.cam_at[0] = vr_state.cam_eye[0] - sy * cp;
     vr_state.cam_at[1] = vr_state.cam_eye[1] + sp;
     vr_state.cam_at[2] = vr_state.cam_eye[2] - cy * cp;
+    // The bridge orbits about cam_at. A unit forward vector would orbit about the eye,
+    // not Banjo. The free dynamic camera's native target includes its player-height/lag rules.
+    // Only read it in live third-person VR; the flat/first-person/scripted basis stays native.
+    if (recomp_vr_is_active() && getGameMode() == GAME_MODE_3_NORMAL
+        && ncCamera_getType() == CAMERA_TYPE_2_DYNAMIC && player_is_present()
+        && !(ncFirstPersonCamera_getState() >= 1 && ncFirstPersonCamera_getState() <= 3)) {
+        func_802C02D4(vr_state.cam_at);
+    }
     vr_state.cam_up[0] = sr * cy + cr * sp * sy;
     vr_state.cam_up[1] = cr * cp;
     vr_state.cam_up[2] = -sr * sy + cr * sp * cy;
@@ -74,4 +83,5 @@ void vr_frame_hook(void) {
     } else {
         vr_logged_scene = VR_SCENE_UNKNOWN;
     }
+    vr_diag_save_tick(scene);
 }

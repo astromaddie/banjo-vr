@@ -34,9 +34,13 @@ _Static_assert(sizeof(VrGameState) == 76, "frozen snapshot ABI");
 
 DECLARE_FUNC(s32, recomp_vr_is_active);
 DECLARE_FUNC(void, recomp_vr_publish_game_state, const VrGameState*);
+DECLARE_FUNC(s32, recomp_vr_diag_save_in_play);
+// Positive degrees turn right. A rejected poll drops pending input and clears host orbit.
+DECLARE_FUNC(s32, recomp_vr_take_turn, s32 applicable);
 
 #ifdef MIPS
 void vr_frame_hook(void);
+void vr_diag_save_tick(s32 scene);
 void vr_capture_camera(f32 near, f32 far);
 // id with a VR_BILLBOARD_*_ID_FLAG while VR is active (transform_ids.h); id itself otherwise and
 // for the reserved ids 0 and G_EX_ID_AUTO.
@@ -44,5 +48,8 @@ u32 vr_billboard_group_id(u32 id, u32 flag);
 // Set while a model's billboard geo node is drawn in VR: set_model_matrix_group adds it to the ids.
 extern u32 vr_model_billboard_flag;
 extern s32 vr_sky_drawn;
+void vr_apply_comfort_turn(s32 camera_type);
+s32 vr_comfort_camera_active(void);
+s32 vr_comfort_camera_held(void);
 #endif
 #endif

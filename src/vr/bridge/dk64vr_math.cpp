@@ -223,6 +223,10 @@ Mat4 orbitViewAround(const Mat4 &view, float d, const Vec3 &pivot) {
     return mul(mul(mul(toPivot, rot), back), view);
 }
 
+Mat4 orbitViewCorrection(const Mat4 &mainView, float d, const Vec3 &pivot) {
+    return mul(rigidInverse(mainView), orbitViewAround(mainView, d, pivot));
+}
+
 Vec3 thirdPersonOrigin(const Vec3 &eye, const Vec3 &at, float lower, float closer) {
     lower = std::clamp(lower, 0.0f, 1.0f);
     closer = std::clamp(closer, 0.0f, 0.8f);

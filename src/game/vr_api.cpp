@@ -27,6 +27,7 @@ std::atomic<uint32_t> sequence{0};
 std::atomic<uint32_t> snapshot[kWords]{};
 std::mutex writer_mutex;
 std::atomic<int> active{0};
+std::atomic<int> diag_save_in_play{0};
 
 bool force_patches() {
     static const bool forced = [] {
@@ -66,6 +67,13 @@ extern "C" int dk64vr_is_active(void) {
 }
 extern "C" void dk64vr_set_active(int value) {
     active.store(value != 0, std::memory_order_relaxed);
+    if (!value) dk64vr_clear_turn();
+}
+extern "C" void dk64vr_set_diag_save_in_play(int enabled) {
+    diag_save_in_play.store(enabled != 0, std::memory_order_relaxed);
+}
+extern "C" int dk64vr_diag_save_in_play(void) {
+    return diag_save_in_play.load(std::memory_order_relaxed);
 }
 // The runtime's quit flag (librecomp/src/recomp.cpp), so a paused game never holds up a quit.
 extern std::atomic_bool exited;
@@ -74,11 +82,16 @@ extern "C" void recomp_vr_is_active(uint8_t *rdram, recomp_context *ctx) {
     (void)rdram;
     _return(ctx, dk64vr_is_active());
 }
+extern "C" void recomp_vr_diag_save_in_play(uint8_t *rdram, recomp_context *ctx) {
+    (void)rdram;
+    _return(ctx, dk64vr_diag_save_in_play());
+}
 extern "C" void recomp_vr_publish_game_state(uint8_t *rdram, recomp_context *ctx) {
     // RDRAM is word-swapped: aligned 32-bit ints/floats are already host-endian.
     dk64vr_game_state state;
     std::memcpy(&state, _arg<0, const dk64vr_game_state *>(rdram, ctx), sizeof(state));
     dk64vr_publish_game_state(&state);
+    if (state.scene != DK64VR_SCENE_GAMEPLAY) dk64vr_clear_turn();
 
     // While the VR host pauses the game (headset off, focus lost, the VR settings menu:
     // dk64vr_control.h), the game thread waits here, once a frame, outside any game lock. Never
@@ -86,4 +99,10 @@ extern "C" void recomp_vr_publish_game_state(uint8_t *rdram, recomp_context *ctx
     while (dk64vr_is_paused() && !exited.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
+}
+extern "C" void recomp_vr_take_turn(uint8_t *rdram, recomp_context *ctx) {
+    (void)rdram;
+    const bool applicable = _arg<0, int>(rdram, ctx) != 0
+        && dk64vr_is_active() && !dk64vr_is_paused();
+    _return(ctx, dk64vr_take_turn_if_applicable(applicable));
 }

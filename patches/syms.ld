@@ -57,3 +57,6 @@ recomp_get_jinjo_saving_enabled = 0x8F0000CC;
 /* VR game-state imports; allocated after the existing Banjo host imports. */
 recomp_vr_is_active = 0x8F0000D0;
 recomp_vr_publish_game_state = 0x8F0000D4;
+/* Diagnostic: host reports the diag_save_in_play setting (VR host only). */
+recomp_vr_diag_save_in_play = 0x8F0000E0;
+recomp_vr_take_turn = 0x8F0000D8;
