@@ -111,6 +111,12 @@ RECOMP_PATCH void func_80350818(Gfx **gfx, Mtx **mtx, Vtx **vtx) {
     f32 sp90[3];
     s32 sp80[4];
 
+    // Camera-relative flare quads would track the flat camera in stereo. No timers
+    // or game updates live in this draw function, so suppress only its drawing.
+    if (recomp_vr_is_active()) {
+        return;
+    }
+
     temp_s2 = D_80386170.unk0;
     if (temp_s2 != NULL) {
 
