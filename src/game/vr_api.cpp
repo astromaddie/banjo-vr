@@ -3,11 +3,14 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <chrono>
 #include <mutex>
+#include <thread>
 
 #include "recomp.h"
 #include "librecomp/helpers.hpp"
 #include "../vr/include/dk64vr_game_state.h"
+#include "../vr/include/dk64vr_control.h"
 #include "../../patches/vr_state.h"
 
 #define CHECK_SCENE(name) static_assert(VR_SCENE_##name == DK64VR_SCENE_##name, "scene ABI drift")
@@ -64,6 +67,9 @@ extern "C" int dk64vr_is_active(void) {
 extern "C" void dk64vr_set_active(int value) {
     active.store(value != 0, std::memory_order_relaxed);
 }
+// The runtime's quit flag (librecomp/src/recomp.cpp), so a paused game never holds up a quit.
+extern std::atomic_bool exited;
+
 extern "C" void recomp_vr_is_active(uint8_t *rdram, recomp_context *ctx) {
     (void)rdram;
     _return(ctx, dk64vr_is_active());
@@ -73,4 +79,11 @@ extern "C" void recomp_vr_publish_game_state(uint8_t *rdram, recomp_context *ctx
     dk64vr_game_state state;
     std::memcpy(&state, _arg<0, const dk64vr_game_state *>(rdram, ctx), sizeof(state));
     dk64vr_publish_game_state(&state);
+
+    // While the VR host pauses the game (headset off, focus lost, the VR settings menu:
+    // dk64vr_control.h), the game thread waits here, once a frame, outside any game lock. Never
+    // set in a flat build. A quit still goes through.
+    while (dk64vr_is_paused() && !exited.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
 }

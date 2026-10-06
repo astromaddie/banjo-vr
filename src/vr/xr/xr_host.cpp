@@ -37,7 +37,7 @@
 #include "dk64vr_input.h"
 #include "dk64vr_control.h"
 #include "vr_game_profile.h"
-#include "../game/vr_game_state_stand_in.h"
+#include "vr_game_profile_ext.h"
 #include "dk64vr_log.h"
 #include "dk64vr_math.h"
 #include "dk64vr_sched.h"
@@ -161,6 +161,12 @@ public:
     // Install (main thread)
 
     bool install(const std::filesystem::path &appFolder) {
+        // A camera jump of 4 m between game frames is a cut (DK64: 60 units at 15 units/m), in
+        // this game's units.
+        if (const vr_game_profile *profile = vr_game_profile_get(); (profile != nullptr) && (profile->default_world_scale > 0.0f)) {
+            camSmoother.limits.distance = 4.0f * profile->default_world_scale;
+        }
+
         dataDir = appFolder;
         std::error_code ec;
         std::filesystem::create_directories(dataDir, ec);
@@ -340,8 +346,7 @@ public:
 
         if (autostart.active()) {
             const dk64vr_game_state state = gameState();
-            // The game-state stand-in calls everything gameplay: press for the whole time then.
-            if ((state.frame != 0) && (state.scene == DK64VR_SCENE_GAMEPLAY) && !vr_game_state_is_stand_in()) {
+            if ((state.frame != 0) && (state.scene == DK64VR_SCENE_GAMEPLAY)) {
                 if (gameplaySinceS == 0.0) {
                     gameplaySinceS = now;
                 }
@@ -606,13 +611,10 @@ public:
     }
 
     bool perspectiveHudAfterCamera() const override {
-#ifdef VR_PERSPECTIVE_HUD
-        // Banjo draws its 3D HUD items (honeycombs, notes, jiggies) through a perspective HUD
-        // projection after the camera: they belong on the HUD quad, not in the world.
-        return true;
-#else
-        return false;
-#endif
+        // Banjo draws its HUD counters, dialogue portraits and overlays through perspective
+        // projections after the camera (vr_game_profile_ext.h).
+        const vr_game_profile_ext *ext = vr_game_profile_ext_get();
+        return (ext != nullptr) && (ext->perspective_hud_after_camera != 0);
     }
 
     void eyeCamera(uint32_t eye, const float view[16], const float proj[16], float outView[16], float outProj[16]) override {
@@ -954,7 +956,7 @@ public:
                 if (dumpDue) {
                     dumpsDone++;
                     dumpDue = false;
-                    nextDumpFrame = stereoFrames + uint64_t(setting("dump_interval"));
+                    nextDumpFrame = dumpClock() + uint64_t(setting("dump_interval"));
                     diagYawDeg += float(setting("diag_yaw_step"));
                 }
             }
@@ -1088,6 +1090,11 @@ public:
 
             if (stereoShown) {
                 stereoFrames++;
+                // dump_in_play: the dump clock runs only in live third-person or first-person
+                // play (no cinema, no frozen world), so long story intros don't use it up.
+                if (!cinemaActive && !frozen && ((lastScene == DK64VR_SCENE_GAMEPLAY) || (lastScene == DK64VR_SCENE_FIRST_PERSON))) {
+                    playFrames++;
+                }
             }
 
             panelWanted = !stereoShown;
@@ -1779,7 +1786,7 @@ private:
             eyeSubmitPose[eye] = poseMul(origin, eyeInHead[eye]);
         }
 
-        dumpDue = ((nextDumpFrame > 0) && (dumpsDone < uint64_t(setting("dump_count"))) && (stereoFrames + 1 >= nextDumpFrame)) || (menuEyeDump && stereoLatched && !frozen && !probing);
+        dumpDue = ((nextDumpFrame > 0) && (dumpsDone < uint64_t(setting("dump_count"))) && (dumpClock() + 1 >= nextDumpFrame)) || (menuEyeDump && stereoLatched && !frozen && !probing);
         if (dumpDue && menuEyeDump) {
             menuEyeDump = false;
         }
@@ -3362,6 +3369,10 @@ private:
 
     bool dumpDue = false;
     uint64_t nextDumpFrame = 0;
+    uint64_t playFrames = 0;
+    uint64_t dumpClock() const {
+        return (setting("dump_in_play") != 0.0) ? playFrames : stereoFrames;
+    }
     uint64_t dumpsDone = 0;
     bool probeDumped = false;
     Readback eyeReadback[2];

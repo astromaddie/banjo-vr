@@ -7,6 +7,7 @@
 
 #include "dk64vr_settings.h"
 #include "vr_game_profile.h"
+#include "vr_game_profile_ext.h"
 #include "dk64vr_log.h"
 
 static const char *const right_stick_values[] = { "turn", "camera", NULL };
@@ -15,7 +16,7 @@ static const char *const foveation_values[] = { "off", "low", "medium", "high", 
 static const char *const camera_smoothing_values[] = { "off", "low", "medium", "high", NULL };
 
 // Keys that only this port has. The standard keys live in the sfvr registry.
-static const sfvr_setting_key port_keys[] = {
+static sfvr_setting_key port_keys[] = {
 	// Eye foveation (docs/VR_ARCHITECTURE.md 5b): high since schema 5, eye-tracked where gaze is
 	// valid (the fixed projection centre otherwise). Worn: fixed high looked good and tracked high
 	// invisible; at 120 Hz / 2160 it holds 120 fps (3.3 ms of GPU) where off drops to 97-105.
@@ -24,7 +25,8 @@ static const sfvr_setting_key port_keys[] = {
 	// Dump the actual shading-rate attachment with the eye dumps (or once if dump_frame=0).
 	{ "dump_foveation", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
 	// Game units per metre. Donkey Kong's model spans 25.2 units ([vr] player extent, DK Isles),
-	// so 15 makes him about 1.7 m tall; docs/VR_ARCHITECTURE.md section 5.
+	// so 15 makes him about 1.7 m tall; docs/VR_ARCHITECTURE.md section 5. Default and range come
+	// from the game profile (profile_keys_init): DK64's 4-100 around 15, the same ratios for others.
 	{ "world_scale", SFVR_SETTING_FLOAT, 15.0, 4.0, 100.0, NULL },
 	// Immersive eyes only: metres converted by world_scale; 0 restores the game's near for A/B.
 	{ "eye_near_m", SFVR_SETTING_FLOAT, 0.1, 0.0, 0.25, NULL },
@@ -115,7 +117,10 @@ static const sfvr_setting_key port_keys[] = {
 	{ "diag_camera_log", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
 	// Diagnostic: right stick X held at this deflection for 4 s, released for 4 s, in stereo
 	// play (a snap per hold, or the smooth orbit). 0 = off.
-	{ "diag_turn_stick", SFVR_SETTING_FLOAT, 0.0, -1.0, 1.0, NULL }
+	{ "diag_turn_stick", SFVR_SETTING_FLOAT, 0.0, -1.0, 1.0, NULL },
+	// Diagnostic: dump_frame and dump_interval count only frames of live stereo play (no cinema,
+	// no frozen world), so dumps land in gameplay after a long intro.
+	{ "dump_in_play", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL }
 };
 #define PORT_KEY_COUNT (sizeof(port_keys) / sizeof(port_keys[0]))
 
@@ -145,11 +150,35 @@ static const struct { const char *name; double def; } port_defaults[] = {
 #define PORT_DEFAULT_COUNT (sizeof(port_defaults) / sizeof(port_defaults[0]))
 
 
+// The world_scale key's default and range from vr_game_profile_get(): the default life-size scale,
+// and DK64's range around its 15 (4 to 100, a player 6.3x to 0.25x life size) scaled to it.
+static void profile_keys_init(void) {
+	static bool done = false;
+	if (done) {
+		return;
+	}
+	done = true;
+	const vr_game_profile *profile = vr_game_profile_get();
+	if (!profile || !(profile->default_world_scale > 0.0f)) {
+		return;
+	}
+	for (size_t i = 0; i < PORT_KEY_COUNT; i++) {
+		if (strcmp(port_keys[i].name, "world_scale") == 0) {
+			const double def = profile->default_world_scale;
+			port_keys[i].def = def;
+			port_keys[i].min = def * (4.0 / 15.0);
+			port_keys[i].max = def * (100.0 / 15.0);
+		}
+	}
+}
+
 size_t dk64vr_settings_count(void) {
+	profile_keys_init();
 	return sfvr_settings_count() + PORT_KEY_COUNT;
 }
 
 const sfvr_setting_key *dk64vr_settings_key(size_t index) {
+	profile_keys_init();
 	size_t standard = sfvr_settings_count();
 	if (index < standard) {
 		return sfvr_settings_at(index);
@@ -180,11 +209,11 @@ double dk64vr_settings_default(size_t index) {
 			return port_defaults[i].def;
 		}
 	}
-	// The scale that makes the player life-size is a fact of the game (vr_game_profile.h).
-	if (strcmp(k->name, "world_scale") == 0) {
-		const vr_game_profile *profile = vr_game_profile_get();
-		if (profile && profile->default_world_scale > 0.0f) {
-			return sfvr_settings_clamp_float(k, profile->default_world_scale);
+	// A game without a comfort-turn camera patch swings its own camera with the right stick.
+	if (strcmp(k->name, "right_stick_x") == 0) {
+		const vr_game_profile_ext *ext = vr_game_profile_ext_get();
+		if (ext && !ext->takes_comfort_turn) {
+			return 1.0;
 		}
 	}
 	return k->def;

@@ -1,4 +1,4 @@
-# Host unit tests for the VR bridge (with the stand-in game profile, DK64's numbers), buildable on their own (no ROM, no recompiled code):
+# Host unit tests for the VR bridge (with DK64's profile, test_profile_dk64.c), buildable on their own (no ROM, no recompiled code):
 #   cmake -S src/vr/tests -B build-vrtest && cmake --build build-vrtest && build-vrtest/dk64vr_tests
 cmake_minimum_required(VERSION 3.20)
 project(dk64vr_tests LANGUAGES C CXX)
@@ -16,7 +16,8 @@ add_executable(dk64vr_tests
     ${DK64VR_ROOT}/src/vr/bridge/dk64vr_log.c
     ${DK64VR_ROOT}/src/vr/bridge/dk64vr_input.cpp
     ${DK64VR_ROOT}/src/vr/menu/dk64vr_menu.cpp
-    ${DK64VR_ROOT}/src/vr/game/fallback_profile.c
+    ${CMAKE_CURRENT_LIST_DIR}/test_profile_dk64.c
+    ${DK64VR_ROOT}/src/vr/game/profile_ext_default.c
     ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_settings.c
     ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_view.c
     ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_turn.c

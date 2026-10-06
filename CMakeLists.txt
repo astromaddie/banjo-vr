@@ -163,6 +163,7 @@ set (SOURCES
     ${CMAKE_SOURCE_DIR}/src/game/config.cpp
     ${CMAKE_SOURCE_DIR}/src/game/debug.cpp
     ${CMAKE_SOURCE_DIR}/src/game/vr_api.cpp
+    ${CMAKE_SOURCE_DIR}/src/vr/game/vr_control.cpp
     ${CMAKE_SOURCE_DIR}/src/vr/game/banjo_profile.c
     ${CMAKE_SOURCE_DIR}/src/game/recomp_api.cpp
     ${CMAKE_SOURCE_DIR}/src/game/recomp_extension_api.cpp
@@ -391,9 +392,8 @@ if (BK_VR)
         ${CMAKE_SOURCE_DIR}/src/vr/xr/xr_foveation.cpp
         ${CMAKE_SOURCE_DIR}/src/vr/xr/xr_input.cpp
         ${CMAKE_SOURCE_DIR}/src/vr/diag/dk64vr_diag.cpp
-        # Stand-ins until the game side lands (weak; the real definitions replace them).
-        ${CMAKE_SOURCE_DIR}/src/vr/game/fallback_profile.c
-        ${CMAKE_SOURCE_DIR}/src/vr/game/fallback_game_state.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/game/profile_ext_default.c
+        ${CMAKE_SOURCE_DIR}/src/vr/game/banjo_profile_ext.c
         ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_settings.c
         ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_perf.c
         ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_view.c
@@ -412,7 +412,7 @@ if (BK_VR)
     )
     # Port naming (standard.md): BK_VR_<KEY> overrides, the BanjoVR application name.
     target_compile_definitions(BanjoRecompiled PRIVATE BK_VR=1
-        VR_ENV_PREFIX="BK" VR_APPLICATION_NAME="BanjoVR" VR_GAME_TITLE="Banjo-Kazooie" VR_PERSPECTIVE_HUD=1)
+        VR_ENV_PREFIX="BK" VR_APPLICATION_NAME="BanjoVR" VR_GAME_TITLE="Banjo-Kazooie")
     target_link_libraries(BanjoRecompiled PRIVATE ${BK_OPENXR_PREFIX}/lib/libopenxr_loader.a ${CMAKE_DL_LIBS})
 endif()
 
