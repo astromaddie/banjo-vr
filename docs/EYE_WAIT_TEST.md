@@ -4,6 +4,10 @@ This change is **untested on the headset**. The Frame was not contacted. Host bo
 tests and ARM64 builds do not prove stereo correctness or the expected CPU-time reduction.
 Run the following procedure after the coordinator has installed and hash-checked the package.
 
+The current base is Banjo `c65a8f1` and RT64 `87afea9`, including comfort turning, settings
+schema 6, the save diagnostic and billboard facing. Compare both slot settings on this same
+base; the original 7.3 ms wait measurement is a reference, not a measurement of this build.
+
 ## Recording and fences
 
 `RT64_VR_EYE_SLOTS=3` is the default for a host that opts in (Banjo). Values 2–4 select that
@@ -49,8 +53,8 @@ waits. Flat panel and probe submissions retain their existing synchronization.
 | --- | --- | --- |
 | View/projection matrices and fog remaps | Eye | Slot staging + destination buffers |
 | Screen positions, RSP fog/shaded colours, position-modify output | Eye | Slot computed outputs |
-| Generated texcoords, world positions/normals/velocities | Eye-neutral today for ordinary models; model/look-at dependent | Duplicated in the slot; ready for the separate billboard work |
-| Current/previous/inverse-transpose model matrices | Interpolation; future eye-facing billboards | Slot staging + destination buffers |
+| Generated texcoords, world positions/normals/velocities | Model/look-at dependent; billboards share one display-frame orientation | Duplicated computed outputs in each recording slot |
+| Current/previous/inverse-transpose model matrices | Interpolation and billboard facing toward the shared eye midpoint | Slot staging + destination buffers |
 | Interpolated RDP tiles and look-at vectors | Display-frame weight | Slot staging + destination buffers |
 | GPU tile mappings/texture indices | Renderer descriptor ordering, framebuffer operations | Slot staging + destination buffers |
 | Positions/velocities/UVs/colours, all vertex indices, triangle/index data, viewport/fog/lights/look-at, RDP/render/extra parameters | Workload | Full slot copies; producer can recycle its original geometry buffers |
@@ -71,9 +75,16 @@ waits. Flat panel and probe submissions retain their existing synchronization.
 
 Uploader **threads** and CPU projection/transform/tile/look-at processors are shared. CPU
 upload work finishes before the buffer swap is restored; recorded commands refer directly
-to the slot's staging/destination resources. No projection/transform/tile/look-at processor
-implementation or plume source was changed. The billboard worker should keep its per-eye
-model rewrite inside this resource scope and preserve both the upload and output swaps.
+to the slot's staging/destination resources. The slot patches do not change processor
+implementations or plume source. The RT64 base adds billboard processing: projection stores
+the viewpoint after `eyeCamera`, then `TransformProcessor::faceBillboards` rewrites the
+interpolated current/previous matrices and inverse-transposes before uploading them. The
+draw/output buffer swap is already active at that point, so those uploads go to the acquired
+slot's `worldTransformsBuffer`, `prevWorldTransformsBuffer` and `invTWorldTransformsBuffer`;
+the slot's RSP/vertex descriptors consume the same buffers. CPU upload readiness completes
+before restoring the swap. Banjo's host supplies the same midpoint viewpoint for both eyes,
+so the model orientation is per display frame although each eye recording owns a copy.
+The billboard transform-processing condition is preserved even without a matched frame.
 
 ## Memory and timing interpretation
 
@@ -133,6 +144,9 @@ BK_VR_RESOLUTION_SCALE=auto
 BK_VR_WORLD_SCALE=100
 BK_VR_FOVEATION=high
 BK_VR_FOVEATION_EYE_TRACKED=1
+BK_VR_BILLBOARD_FACING=1
+BK_VR_DIAG_SAVE_IN_PLAY=0
+BK_VR_DIAG_TURN_STICK=0
 BK_VR_DIAG_AUTOSTART=360
 BK_VR_DIAG_EXIT_SECONDS=410
 BK_VR_DIAG_YAW=0
@@ -156,7 +170,8 @@ for run in 1 2 3; do
     tools/steam_frame/unattended.sh 420 "evidence/eye-wait/slots${slots}-run${run}" \
       "RT64_VR_EYE_SLOTS=$slots" RT64_VR_DEFER_WAIT=1 \
       force_render=1 timing=1 resolution_scale=auto world_scale=100 \
-      foveation=high foveation_eye_tracked=1 diag_autostart=360 \
+      foveation=high foveation_eye_tracked=1 billboard_facing=1 \
+      diag_save_in_play=0 diag_turn_stick=0 diag_autostart=360 \
       diag_exit_seconds=410 diag_yaw=0 dump_frame=0 dump_panel_frame=0 \
       dump_foveation=0 diag_vr_menu_at=0 diag_menu_at=0 diag_start_at=0
   done
@@ -199,23 +214,39 @@ not lose or overwrite a requested PNG when multiple recordings are pending.
 ## Host evidence
 
 Verified on 2026-10-06 with image `dk64-vr-linux`, ARM64 Release, clang 15.0.7, four jobs.
-Executable source: superproject `1e357d729843c673f3561b6915c4f31cb008d4a8`, RT64
-`a1335d3e566e2a3b0fcf95f14b08cc8a703ad6b4`. The following documentation commit does not
-change executable inputs.
+Rebased executable source: superproject `8c05d9ad918d1f88bc254e51b299944117c06b49`, RT64
+`8ad0ea0526b4454b98ba095e33e1d3b6fc3b7f77`. Subsequent test-harness/documentation commits
+do not change executable inputs; final package metadata records the packaging HEAD.
 
-- `BUILD_DIR=build-vrtest JOBS=4 tools/docker/build-linux.sh vrtest`: passed, including the
-  production slot-ring header (24,011 checks), existing bridge tests (8,930 checks, zero
-  failures), Banjo profile tests (zero failures), and the one-shot diagnostic launcher suite.
+RT64 rebased without conflicts onto `87afea9`: `279eab3` became `dcce60a`, and `a1335d3`
+became `8ad0ea0`; `git range-diff` reports both patches unchanged. Superproject conflicts
+were in the RT64 gitlink (selected the corresponding rebased test/core commits),
+`src/vr/tests/CMakeLists.txt` and `tools/docker/container-steps.sh` (retained both comfort-turn
+and slot suites and the four-job limit), and `docs/VR_ARCHITECTURE.md` (retained the new
+billboard/comfort status and the slot row). The XR host merged automatically, retaining
+comfort-turn and billboard callbacks together with slot foveation/readback/telemetry ownership.
+
+- `BUILD_DIR=build-linux-aarch64-vr JOBS=4 tools/docker/build-linux.sh vrtest`: all suites
+  passed, including the production slot-ring header (24,011 checks), bridge/billboard tests
+  (9,250 checks, zero failures), Banjo profile tests (zero failures), comfort-turn tests
+  (1,420 checks, zero failures), and the one-shot diagnostic launcher suite.
+- `tools/vr/test_game_side.sh` and `tools/vr/test_generated.sh` in the build image: passed
+  game-side imports/profile checks, actual generated-MIPS gates, original-ROM flat parity,
+  camera/frame snapshots, native turn/follower, water/flight retention and rejection checks.
+  The new save diagnostic initially exposed a missing generated-harness callee. The extractor
+  now includes the actual `vr_diag_save_tick` output, with controlled save-game callees;
+  assertions cover default-off, interrupted delay and exactly one save. Existing assertions
+  were retained. The temporary decompressed ROM was hash-checked and removed after testing.
 - `BUILD_DIR=build-linux-aarch64-vr BK_VR=0 JOBS=4 tools/docker/build-linux.sh build`:
-  passed, including an incremental rebuild of the final source. Flat ELF build ID
-  `3d8121293e03aa2b813a14bb4c610669dca77b88`. The same tree was then reconfigured for VR;
-  no second build tree was created.
+  passed on the previous base, flat ELF build ID `3d8121293e03aa2b813a14bb4c610669dca77b88`.
+  The rebased VR-off build was not repeated; this previous build is not evidence for the
+  combined new base. No second build tree was created.
 - `BK_ROM="/Users/mads/Downloads/Banjo-Kazooie (USA).z64" BK_VR=1 JOBS=4
   tools/docker/build-linux.sh build`: passed. Final VR ELF build ID
-  `ddd8be02c4d99ceae044568cc9602181f42af91b`.
+  `ab7cdf2ea9b2cbe3300b9492492a0f694fcb8537`.
 - `BK_VR=1 JOBS=4 tools/docker/build-linux.sh package` and `abi`: passed. Package is
   `build-linux-aarch64-vr/package/BanjoRecompiled/` (24 MiB); packaged executable SHA-256
-  `592b117f176696ef94c2b7dbf9a0332e2c43ec68d205fda5cc67010235d5aa21`.
+  `e2d88f64a6c71d9d65b5f7967afb40f68574f96b8670dbfc459789397bd864ba`.
   ABI limits passed: executable GLIBC 2.35, bundled SDL 2.34, atomic 2.17, no GLIBCXX.
 - Packaged VR executable with `--game bk`, Xvfb, lavapipe and dummy audio: remained running
   for 45 seconds (expected timeout status 124). The US ROM was SHA-1 checked, mounted read-only,
@@ -225,20 +256,21 @@ change executable inputs.
   crash occurred before timeout. This covers game startup and the VR-inactive flat renderer,
   not headset stereo or player-visible acceptance.
 
-Logs are retained in the existing `build-linux-aarch64-vr/` tree:
-`eye-slots-tests-final.log`, `eye-slots-flat-recovered.log`, `eye-slots-flat-final-build.log`,
-`eye-slots-vr-final-build.log`, `eye-slots-package.log`, `eye-slots-abi.log`,
-`eye-slots-smoke.log`, and `eye-slots-vulkan-info.log`. The temporary host-test build tree
-was removed after preserving its final log. Package metadata identifies the executable
-source above and reports a dirty tree because the pre-existing nativefiledialog pointer and
-bk-decomp line-ending change were preserved, not committed.
+Rebase logs are retained in the existing `build-linux-aarch64-vr/` tree:
+`eye-slots-rebase-tests.log`, `eye-slots-rebase-vr-build.log`, `eye-slots-rebase-package.log`,
+`eye-slots-rebase-abi.log`, `eye-slots-rebase-smoke.log`, `eye-slots-rebase-game-tests.log`,
+`eye-slots-rebase-generated-tests.log`, and `eye-slots-rebase-rom-test.log`. Earlier logs,
+including `eye-slots-vulkan-info.log`, are retained too. Test binaries and ROM scratch were
+removed after preserving the logs. Package metadata reports a dirty tree because the
+pre-existing nativefiledialog pointer and bk-decomp line-ending change were preserved,
+not committed.
 
 `vulkaninfo` lists only `VK_LAYER_MESA_device_select` and `VK_LAYER_MESA_overlay`; Khronos
 validation is unavailable. No DK64 full build was run; its host remains on the legacy path
 through the default opt-in implementation. Device A/B, dynamic foveation and stereo GPU
 corruption checks remain coordinator work. No push or device action was performed.
 
-RT64 paths changed (relative to `lib/rt64`):
+RT64 paths changed by the slot commits relative to `87afea9` (relative to `lib/rt64`):
 
 ```text
 CMakeLists.txt
