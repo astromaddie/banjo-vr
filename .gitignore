@@ -66,3 +66,6 @@ RSPRecomp
 
 # Controller mappings file
 gamecontrollerdb.txt
+
+# Native Linux builds made by tools/docker/build-linux.sh
+build-*/

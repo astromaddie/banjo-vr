@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# The build steps themselves, run inside the container from tools/docker/linux.Dockerfile with
+# the repository mounted at /src. tools/docker/build-linux.sh is the host-side entry point.
+#
+#   container-steps.sh tools|rom|recomp|build|package|abi|smoke
+#
+# Environment: BUILD_DIR (default build-linux-<arch>, or build-linux-<arch>-vr with BK_VR=1), JOBS,
+# BUILD_TYPE (default Release), BK_VR (1: the OpenXR VR build),
+# ROM_FILE (rom step: the original US .z64, mounted read-only by build-linux.sh).
+set -euo pipefail
+
+cd /src
+arch="$(uname -m)"
+vr="${BK_VR:-0}"
+if [[ "$vr" == 1 ]]; then
+	build="${BUILD_DIR:-build-linux-$arch-vr}"
+else
+	build="${BUILD_DIR:-build-linux-$arch}"
+fi
+jobs="${JOBS:-$(nproc)}"
+type="${BUILD_TYPE:-Release}"
+out="$build/package/BanjoRecompiled"
+
+# Only on aarch64: char is unsigned by default there, the MIPS-derived code expects signed;
+# and clang fuses a*b+c into FMA by default on aarch64, which would change the recompiled
+# floating point results. x86-64 already behaves this way, so the flags change nothing there.
+flags="-fsigned-char -ffp-contract=off"
+
+step_tools() {
+	# N64Recomp and RSPRecomp from the revision the runtime submodule is pinned to, so the
+	# generated code and the runtime that loads it agree. Out-of-tree; the two binaries are
+	# copied to the repository root, where banjo.us.rev0.toml and the CMake patch step expect them.
+	cmake -S lib/N64ModernRuntime/N64Recomp -B "$build/n64recomp" -GNinja \
+		-DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-15 -DCMAKE_CXX_COMPILER=clang++-15
+	cmake --build "$build/n64recomp" --target N64RecompCLI RSPRecomp -j "$jobs"
+	cp "$build/n64recomp/N64Recomp" "$build/n64recomp/RSPRecomp" .
+}
+
+step_rom() {
+	# Inflates the overlays (tools/bk_decompress_rom.py, a port of the decomp's bk_rom_decompress)
+	# into the gitignored banjo.us.v10.decompressed.z64 in the repository root, and checks it
+	# against the decomp's sha1 for the decompressed ROM.
+	: "${ROM_FILE:?ROM_FILE}"
+	python3 tools/bk_decompress_rom.py "$ROM_FILE" banjo.us.v10.decompressed.z64
+	echo "1fb13cad402518d3ae9a8dc4b52c5c54b2a4adc7  banjo.us.v10.decompressed.z64" | sha1sum -c -
+	ls -l banjo.us.v10.decompressed.z64
+}
+
+step_recomp() {
+	test -x ./N64Recomp -a -x ./RSPRecomp || { echo "run the tools step first" >&2; exit 1; }
+	test -f banjo.us.v10.decompressed.z64 || { echo "run the rom step first" >&2; exit 1; }
+	./N64Recomp banjo.us.rev0.toml
+	./RSPRecomp n_aspMain.us.rev0.toml
+}
+
+step_build() {
+	test -d RecompiledFuncs || { echo "run the recomp step first" >&2; exit 1; }
+	# NFD_PORTAL=ON: the file dialog talks to xdg-desktop-portal over D-Bus instead of linking
+	# GTK3.
+	cmake -S . -B "$build" -GNinja -DCMAKE_BUILD_TYPE="$type" \
+		-DCMAKE_C_COMPILER=clang-15 -DCMAKE_CXX_COMPILER=clang++-15 \
+		-DPATCHES_C_COMPILER=clang-15 -DPATCHES_LD=ld.lld-15 \
+		-DCMAKE_C_FLAGS="$flags" -DCMAKE_CXX_FLAGS="$flags" \
+		-DNFD_PORTAL=ON \
+		-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON '-DCMAKE_INSTALL_RPATH=$ORIGIN/lib' \
+		-DBK_VR="$([[ "$vr" == 1 ]] && echo ON || echo OFF)"
+	cmake --build "$build" --target BanjoRecompiled -j "$jobs"
+	file "$build/BanjoRecompiled"
+	ls -l "$build/BanjoRecompiled"
+}
+
+step_vrtest() {
+	# The VR bridge's host unit tests (src/vr/tests), on their own: no ROM, no recompiled code.
+	cmake -S src/vr/tests -B "$build/vrtest" -GNinja -DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_C_COMPILER=clang-15 -DCMAKE_CXX_COMPILER=clang++-15
+	cmake --build "$build/vrtest"
+	"$build/vrtest/dk64vr_tests"
+	bash tools/steam_frame/test-vr-diag.sh "$build/vrtest"
+}
+
+step_package() {
+	tools/package_linux.sh "$build" "$out"
+}
+
+step_abi() {
+	python3 tools/check_linux_abi.py --lib-dir "$out/lib" "$out/BanjoRecompiled"
+}
+
+step_smoke() {
+	# Starts the packaged build under a virtual X server with software Vulkan (lavapipe), with
+	# a throwaway data directory. Proves the binary loads, finds its assets, and gets as far as
+	# its UI; it says nothing about the Frame's GPU. With ROM_FILE set, the ROM is stored where
+	# the game keeps it, so the run also gets past the ROM screen.
+	data="$(mktemp -d)"
+	trap 'rm -rf "$data"' EXIT
+	[ -z "${ROM_FILE:-}" ] || cp "$ROM_FILE" "$data/bk.n64.us.1.0.z64"
+	cd "$out"
+	# The game aborts when the X server goes away; do not leave a core file in the package.
+	ulimit -c 0
+	set +e
+	APP_FOLDER_PATH="$data" SDL_AUDIODRIVER=dummy SDL_VIDEODRIVER=x11 \
+		timeout "${SMOKE_SECONDS:-25}" xvfb-run -a -s '-screen 0 1280x720x24' ./BanjoRecompiled 2>&1 | tail -40
+	status=${PIPESTATUS[0]}
+	echo "exit status $status (124 = still running when the timeout stopped it)"
+	ls -l "$data"
+}
+
+step="${1:?step}"
+"step_$step"
