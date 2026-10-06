@@ -193,7 +193,7 @@ plume::RenderFramebuffer *XrFoveation::framebuffer(uint32_t eye, plume::RenderCo
     // The eye render is single-sample; do not change offscreen/MSAA or depth-only passes.
     if (fb->colorAttachments.size() != 1 || fb->colorAttachments[0]->desc.multisampling.sampleCount != 1) return base;
     const uint64_t key = (uint64_t(fb->width) << 32) | fb->height;
-    auto &image = images[eye][key];
+    auto &image = images[eye][commands][key];
     if (!image) {
         image = std::make_shared<Image>();
         const auto map = makeShadingRateMap(fb->width, fb->height, ew, eh, texelSize.width, texelSize.height, centre, level, supportedRates);

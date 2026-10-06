@@ -66,3 +66,8 @@ target_compile_options(comfort_turn_tests PRIVATE -Wall -Wextra -ffp-contract=of
 target_link_libraries(comfort_turn_tests PRIVATE m)
 add_test(NAME comfort_turn_tests COMMAND comfort_turn_tests)
 set_property(TARGET comfort_turn_tests PROPERTY CXX_STANDARD 20)
+
+add_executable(rt64_vr_eye_slots_test ${DK64VR_ROOT}/lib/rt64/src/tests/rt64_vr_eye_slots_test.cpp)
+target_include_directories(rt64_vr_eye_slots_test PRIVATE ${DK64VR_ROOT}/lib/rt64/src)
+target_compile_options(rt64_vr_eye_slots_test PRIVATE -Wall -Wextra)
+add_test(NAME rt64_vr_eye_slots_test COMMAND rt64_vr_eye_slots_test)

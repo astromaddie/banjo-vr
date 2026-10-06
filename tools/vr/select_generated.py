@@ -7,7 +7,8 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / 'build/vr-check'
 PATCHED = ['func_802BBA84', 'func_80302C94', 'func_80344138', 'func_80344424',
            'func_80344720', 'viewport_isBoundingBoxInFrustum', 'viewport_func_8024DB50',
-           'viewport_isBoundingBoxInFrustumCopy', 'vr_capture_camera', 'vr_frame_hook', 'func_80350818']
+           'viewport_isBoundingBoxInFrustumCopy', 'vr_capture_camera', 'vr_frame_hook',
+           'vr_diag_save_tick', 'func_80350818']
 ORIGINAL = PATCHED[:5] + ['viewport_isBoundingBoxInFrustum', 'viewport_func_8024DB50', 'func_80350818']
 SUPPORT = ['coords_func_8033EAF8', 'ml_vec3f_dot_product', 'mlAbsF']
 

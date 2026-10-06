@@ -251,6 +251,7 @@ and dumps; it never pressed a real button and nobody wore it.
 | Recomp menus on the panel, pointer | built (shared code); not exercised on Banjo |
 | Billboard sprites facing the eye, not the game camera | verified unattended (section 4a; host tests; Spiral Mountain: the cliff statue sprite upright and facing the eyes, the only billboard in that view; particles not seen on the device) |
 | Comfort turn (snap 45°, smooth orbit, native camera follows) | host/import and generated-MIPS tests pass; ARM64 build/package and flat compilation verified; device/worn acceptance pending |
+| RT64 per-eye resource slots, removing the wait between eye submissions | host work in this branch; headset-unverified; A/B and resource inventory in [EYE_WAIT_TEST.md](EYE_WAIT_TEST.md) |
 | Worn | never |
 
 ### 6a. Measured (unattended, off-head, Steam launch, 2026-10-06)

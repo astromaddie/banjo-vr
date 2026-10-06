@@ -32,7 +32,9 @@ public:
 
 private:
     struct Image;
-    std::map<uint64_t, std::shared_ptr<Image>> images[2];
+    // A command list is one fenced RT64 recording slot. Its staging bytes and rate image
+    // must not be rewritten while an earlier frame using that slot is still on the GPU.
+    std::map<const plume::RenderCommandList *, std::map<uint64_t, std::shared_ptr<Image>>> images[2];
     std::shared_ptr<Image> lastImage[2];
     plume::VulkanDevice *device = nullptr;
     FoveationLevel level = FoveationLevel::Off;

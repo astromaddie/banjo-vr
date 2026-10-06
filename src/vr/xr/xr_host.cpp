@@ -822,6 +822,21 @@ public:
         return uint32_t(hiddenTangents[eye].size());
     }
 
+    bool supportsEyeSlots() const override { return true; }
+
+    void eyeRecordingSlot(uint32_t slot) override { recordingEyeSlot = slot; }
+
+    void recordHud(plume::RenderCommandList *commandList) override {
+        if (hudDumpDue && recordingEyeSlot < eyeSlotReadbacks.size() && hudChain.acquired) {
+            hudDumpDue = false;
+            plume::VulkanTexture *image = hudChain.textures[hudChain.index].get();
+            Readback &readback = hudSlotReadbacks[recordingEyeSlot];
+            readback.keepAlpha = true;
+            recordReadback(commandList, image, hudChain, readback, "vr-hud", hudDumpIndex);
+            commandList->barriers(plume::RenderBarrierStage::GRAPHICS, plume::RenderTextureBarrier(image, plume::RenderTextureLayout::COLOR_WRITE));
+        }
+    }
+
     void recordEye(uint32_t eye, plume::RenderCommandList *commandList, plume::RenderTexture *source, uint32_t width, uint32_t height, bool drawn) override {
         Swapchain &chain = eyeChain[eye];
         if (!chain.acquired || (eye > 1)) {
@@ -844,7 +859,8 @@ public:
         }
 
         if (dumpDue) {
-            recordReadback(commandList, image, chain, eyeReadback[eye], "vr-eye" + std::to_string(eye));
+            Readback &readback = (recordingEyeSlot < eyeSlotReadbacks.size()) ? eyeSlotReadbacks[recordingEyeSlot] : eyeReadback[eye];
+            recordReadback(commandList, image, chain, readback, "vr-eye" + std::to_string(eye));
         }
 
         commandList->barriers(plume::RenderBarrierStage::GRAPHICS, plume::RenderTextureBarrier(image, plume::RenderTextureLayout::COLOR_WRITE));
@@ -951,10 +967,43 @@ public:
 
     void eyeDone(uint32_t eye, const RT64::VrEyeStats &stats) override {
         if (eye < 2) {
-            eyeCpuMs[eye] = stats.cpuMs;
-            eyeGpuMs[eye] = stats.gpuMs;
-            eyeStats[eye] = stats;
-            finishReadback(eyeReadback[eye]);
+            // GPU samples are complete recordings, normally one or two display frames late.
+            // Exceptional resource drains can retire slots out of order.
+            if (stats.recordingSlot == UINT32_MAX || stats.frameSerial >= eyeStats[eye].frameSerial) {
+                eyeCpuMs[eye] = stats.cpuMs;
+                eyeGpuMs[eye] = stats.gpuMs;
+                eyeStats[eye] = stats;
+            }
+            if (setting("timing") != 0.0) {
+                // Count each completed eye once; repeated cached samples would bias the
+                // averages when the GPU falls behind or several slots retire together.
+                statSamples[eye]++;
+                const RT64::VrEyeStats &st = stats;
+                statSum[eye][0] += st.gpuCopyMs;
+                statSum[eye][1] += st.recordMs;
+                statSum[eye][2] += st.renderPasses;
+                statSum[eye][3] += st.passMpx;
+                statSum[eye][4] += st.draws;
+                statSum[eye][5] += st.uberDraws;
+                statSum[eye][6] += st.decalDraws;
+                statSum[eye][7] += st.depthSwitches;
+                statSum[eye][8] += st.testZ;
+                statSum[eye][9] += st.clears;
+                statSum[eye][10] += st.gpuMs;
+                statSum[eye][11] += st.submitMs;
+                statSum[eye][12] += st.waitMs;
+                statSum[eye][13] += st.slotWaitMs;
+                statSum[eye][14] += st.resourceWaitMs;
+                statSum[eye][15] += st.gpuAge;
+                statMax[eye] = std::max(statMax[eye], st.gpuMs + st.gpuCopyMs);
+            }
+            if (stats.recordingSlot < eyeSlotReadbacks.size()) {
+                finishReadback(eyeSlotReadbacks[stats.recordingSlot]);
+                finishReadback(hudSlotReadbacks[stats.recordingSlot]);
+            }
+            else {
+                finishReadback(eyeReadback[eye]);
+            }
         }
     }
 
@@ -1164,27 +1213,6 @@ public:
             const float eyes[2] = { stereoShown ? float(eyeCpuMs[0]) : 0.0f, stereoShown ? float(eyeCpuMs[1]) : 0.0f };
             const float gpu = stereoShown ? float(eyeGpuMs[0] + eyeGpuMs[1]) : -1.0f;
             sfvr_perf_add_frame(&perf, nowS, missed ? 1 : 0, stages, eyes, gpu);
-            if (stereoShown) {
-                // Window sums of the eye passes' statistics (RT64::VrEyeStats), per eye.
-                statFrames++;
-                for (int e = 0; e < 2; e++) {
-                    const RT64::VrEyeStats &st = eyeStats[e];
-                    statSum[e][0] += st.gpuCopyMs;
-                    statSum[e][1] += st.recordMs;
-                    statSum[e][2] += st.renderPasses;
-                    statSum[e][3] += st.passMpx;
-                    statSum[e][4] += st.draws;
-                    statSum[e][5] += st.uberDraws;
-                    statSum[e][6] += st.decalDraws;
-                    statSum[e][7] += st.depthSwitches;
-                    statSum[e][8] += st.testZ;
-                    statSum[e][9] += st.clears;
-                    statSum[e][10] += st.gpuMs;
-                    statSum[e][11] += st.submitMs;
-                    statSum[e][12] += st.waitMs;
-                    statMax[e] = std::max(statMax[e], st.gpuMs + st.gpuCopyMs);
-                }
-            }
             char line[256];
             if (sfvr_perf_poll(&perf, nowS, line, sizeof(line))) {
                 const double windowS = nowS - perfWindowStartS;
@@ -1200,16 +1228,16 @@ public:
                 }
 
                 gazeSwitchesWindow = 0;
-                if (statFrames > 0) {
-                    const double n = double(statFrames);
-                    auto avg = [&](int e, int k) { return statSum[e][k] / n; };
-                    printf("[vr-perf] eyes gpu=%.2f/%.2f copy=%.2f/%.2f max=%.2f/%.2fms rec=%.2f/%.2f submit=%.2f/%.2f wait=%.2f/%.2fms passes=%.1f/%.1f mpx=%.1f/%.1f draws=%.0f uber=%.0f decal=%.0f dsw=%.1f/%.1f testz=%.1f clears=%.1f\n",
+                if (statSamples[0] > 0 || statSamples[1] > 0) {
+                    auto avg = [&](int e, int k) { return statSamples[e] ? statSum[e][k] / double(statSamples[e]) : 0.0; };
+                    printf("[vr-perf] eyes gpu=%.2f/%.2f copy=%.2f/%.2f max=%.2f/%.2fms rec=%.2f/%.2f submit=%.2f/%.2f wait=%.2f/%.2fms passes=%.1f/%.1f mpx=%.1f/%.1f draws=%.0f uber=%.0f decal=%.0f dsw=%.1f/%.1f testz=%.1f clears=%.1f slots=%u reuse=%.2f/%.2f drain=%.2f/%.2fms gpu_age=%.1f/%.1f slot_buf_mib=%.2f\n",
                         avg(0, 10), avg(1, 10), avg(0, 0), avg(1, 0), statMax[0], statMax[1], avg(0, 1), avg(1, 1), avg(0, 11), avg(1, 11), avg(0, 12), avg(1, 12), avg(0, 2), avg(1, 2), avg(0, 3), avg(1, 3),
-                        avg(1, 4), avg(1, 5), avg(1, 6), avg(0, 7), avg(1, 7), avg(1, 8), avg(1, 9));
+                        avg(1, 4), avg(1, 5), avg(1, 6), avg(0, 7), avg(1, 7), avg(1, 8), avg(1, 9),
+                        eyeStats[1].frameSlots, avg(0, 13), avg(1, 13), avg(0, 14), avg(1, 14), avg(0, 15), avg(1, 15), double(eyeStats[1].slotBufferBytes) / (1024.0 * 1024.0));
                 }
                 logCameraWindow();
-                statFrames = 0;
-                std::fill(&statSum[0][0], &statSum[0][0] + 2 * 13, 0.0);
+                statSamples[0] = statSamples[1] = 0;
+                std::fill(&statSum[0][0], &statSum[0][0] + 2 * 16, 0.0);
                 statMax[0] = statMax[1] = 0.0;
                 std::fill(std::begin(hudPartChanges), std::end(hudPartChanges), 0u);
                 hudCpuSum = hudGpuSum = 0.0;
@@ -1591,6 +1619,8 @@ private:
         hudReadback.buffer.reset();
         eyeReadback[0].buffer.reset();
         eyeReadback[1].buffer.reset();
+        for (auto &readback : eyeSlotReadbacks) readback = Readback();
+        for (auto &readback : hudSlotReadbacks) readback = Readback();
         panelReadback.buffer.reset();
         frameWorker.reset();
         panelWorker.reset();
@@ -3349,8 +3379,11 @@ private:
     double eyeCpuMs[2] = {};
     double eyeGpuMs[2] = {};
     RT64::VrEyeStats eyeStats[2];
-    uint64_t statFrames = 0;
-    double statSum[2][13] = {};
+    uint32_t recordingEyeSlot = UINT32_MAX;
+    std::array<Readback, 8> eyeSlotReadbacks;
+    std::array<Readback, 8> hudSlotReadbacks;
+    uint64_t statSamples[2] = {};
+    double statSum[2][16] = {};
     double statMax[2] = {};
 
     Pose origin;
