@@ -1,5 +1,6 @@
 #include "patches.h"
 #include "core1/core1.h"
+#include "vr_state.h"
 
 extern Gfx D_8036C630[];
 extern Gfx D_8036C690[];
@@ -8,6 +9,14 @@ extern Gfx D_8036C690[];
 RECOMP_PATCH void func_80314BB0(Gfx **gfx, Mtx **mtx, Vtx **vtx, void *frame_buffer_1, void *frame_buffer_2) {
     s32 x;
     s32 y;
+
+    // @recomp VR: the pause menu's background is a copy of the last world frame (taken into the
+    // Z-buffer on the first paused frame, drawn back on the others). In VR the frozen stereo world
+    // stays behind the menu, so neither copy is made: paused frames draw only the menu, over the
+    // black fill, and the renderer shows it over the held eye images. This is the copy's only use.
+    if (recomp_vr_is_active()) {
+        return;
+    }
 
     gSPDisplayList((*gfx)++, D_8036C630);
     gDPSetColorImage((*gfx)++, G_IM_FMT_RGBA, G_IM_SIZ_16b, gFramebufferWidth, OS_PHYSICAL_TO_K0(frame_buffer_1));

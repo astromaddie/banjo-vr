@@ -506,13 +506,34 @@ public:
             frame.eyeHeight = eyeChain[0].height;
             acquireEyes();
         }
+        else if (pauseMenuHudWanted()) {
+            // The pause menu over the frozen world: RT64 renders each paused frame's menu into
+            // the HUD image only (the eye images stay as they froze).
+            frameMode = RT64::VrFrame::Mode::Hud;
+            frame.eyeWidth = eyeChain[0].width;
+            frame.eyeHeight = eyeChain[0].height;
+        }
         else {
             frameMode = RT64::VrFrame::Mode::Flat;
+        }
+
+        if ((frameMode != RT64::VrFrame::Mode::Hud) && pauseHudDrawn) {
+            pauseHudDrawn = false;
+            dk64vr_logf("pause menu: off the HUD image");
         }
 
         frame.mode = frameMode;
         frame.flatHeight = PanelHeight;
         return frame;
+    }
+
+    // Banjo's pause (vr_game_profile_ext.h, pause_menu_hud): the menu's own draws in the HUD
+    // image where the panel would be, over the frozen, dimmed world. A recomp menu over the
+    // pause keeps the panel.
+    bool pauseMenuHudWanted() const {
+        const vr_game_profile_ext *ext = vr_game_profile_ext_get();
+        return (ext != nullptr) && (ext->pause_menu_hud != 0) && !probing && stereoLatched && frozen && pausePanel && !menuPanel && haveFrozenViews
+            && (hudChain.handle != XR_NULL_HANDLE);
     }
 
     void workloadArrived(const RT64::VrWorkloadInfo &info) override {
@@ -636,6 +657,10 @@ public:
         return true;
     }
 
+    void eyeCameraGroup(uint32_t matrixId) override {
+        eyeCameraMatrixId = matrixId;
+    }
+
     void eyeCamera(uint32_t eye, const float view[16], const float proj[16], float outView[16], float outProj[16]) override {
         // The cinema leaves billboards facing the game camera (its views are the game camera's).
         billboardPointValid = false;
@@ -733,9 +758,25 @@ public:
             gameView = levelView(gameView);
         }
 
-        fromMat4(eyeView(gameView, eyeInHead[eye], float(setting("world_scale"))), outView);
+        // The sky's camera (vr_game_profile_ext.h, sky_camera_group): the eye's rotation at the
+        // head's centre without head translation, so the camera-centred sky model is at infinity.
+        const uint32_t skyGroup = vr_game_profile_ext_get()->sky_camera_group;
+        const bool sky = (skyGroup != 0) && (eyeCameraMatrixId == skyGroup) && (setting("sky_at_infinity") != 0.0);
+        if (sky) {
+            Pose skyEye = eyeInHead[eye];
+            skyEye.p = { 0.0f, 0.0f, 0.0f };
+            fromMat4(eyeView(gameView, skyEye, float(setting("world_scale"))), outView);
+            if (!skyLogged) {
+                skyLogged = true;
+                dk64vr_logf("sky: camera group %08X drawn at infinity (eye rotation, no eye or head translation)", skyGroup);
+            }
+        }
+        else {
+            fromMat4(eyeView(gameView, eyeInHead[eye], float(setting("world_scale"))), outView);
+        }
+
         // Billboards face the point between the eyes, from this same view (vr_game_profile_ext.h).
-        if (!billboardGroupList.empty()) {
+        if (!billboardGroupList.empty() && !sky) {
             billboardPoint = dk64vr::billboardViewpoint(gameView, eyeInHead[0], eyeInHead[1], float(setting("world_scale")));
             billboardPointValid = true;
         }
@@ -910,7 +951,9 @@ public:
     plume::RenderFramebuffer *hudAcquire(uint32_t hudCalls, uint64_t hudSignature, uint32_t *width, uint32_t *height) override {
         lastHudCalls = hudCalls;
         hudGameFrames++;
-        if ((hudCalls == 0) || (setting("hud_visible") == 0.0) || (hudChain.handle == XR_NULL_HANDLE) || (frameMode != RT64::VrFrame::Mode::Stereo)) {
+        // The pause menu (a Hud frame) shows whatever hud_visible says: it is the menu.
+        const bool hudFrame = (frameMode == RT64::VrFrame::Mode::Hud);
+        if ((hudCalls == 0) || ((setting("hud_visible") == 0.0) && !hudFrame) || (hudChain.handle == XR_NULL_HANDLE) || ((frameMode != RT64::VrFrame::Mode::Stereo) && !hudFrame)) {
             hudShown = false;
             hudSignatureShown = 0;
             return nullptr;
@@ -949,6 +992,11 @@ public:
 
     void hudRecorded(double cpuMs, double gpuMs) override {
         hudShown = true;
+        if ((frameMode == RT64::VrFrame::Mode::Hud) && !pauseHudDrawn) {
+            pauseHudDrawn = true;
+            dk64vr_logf("pause menu: on the HUD image (%u calls)", lastHudCalls);
+        }
+
         hudCpuSum += cpuMs;
         hudGpuSum += gpuMs;
         hudPasses++;
@@ -1144,7 +1192,16 @@ public:
                 layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader *>(&fadeQuad));
             }
 
-            if (panelShown && panelReady.load()) {
+            // The pause menu's HUD image takes the panel's place (pauseMenuHudWanted).
+            const bool pauseHudShown = panelShown && (frameMode == RT64::VrFrame::Mode::Hud) && pauseHudDrawn && hudShown && hudReleasedOnce;
+            if (pauseHudShown) {
+                XrCompositionLayerQuad menu = hudQuad();
+                const float width = float(setting("panel_width"));
+                menu.pose = toXr(panelPose());
+                menu.size = { width, width * 0.75f };
+                extraQuads.push_back(menu);
+            }
+            else if (panelShown && (frameMode != RT64::VrFrame::Mode::Hud) && panelReady.load()) {
                 const float width = float(setting("panel_width"));
                 const Pose panel = panelPose();
                 quad.space = localSpace;
@@ -1505,7 +1562,7 @@ private:
 
         // RT64's main color image is RGBA8 UNORM holding gamma-encoded colour: copied raw into an
         // sRGB image it is decoded once by the compositor (lessons 8, 42).
-        const bool dumps = (setting("dump_frame") > 0.0) || (setting("dump_panel_frame") > 0.0) || (setting("diag_vr_menu_at") > 0.0);
+        const bool dumps = (setting("dump_frame") > 0.0) || (setting("dump_panel_frame") > 0.0) || (setting("diag_vr_menu_at") > 0.0) || (setting("diag_pause_at") > 0.0);
         if (has(VK_FORMAT_R8G8B8A8_SRGB)) {
             for (int eye = 0; eye < 2; eye++) {
                 createSwapchain(eyeChain[eye], eyeSize[0], eyeSize[1], VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_R8G8B8A8_UNORM, plume::RenderFormat::R8G8B8A8_UNORM, false, dumps);
@@ -2396,6 +2453,10 @@ private:
                 latestInput.buttons |= n64::Start;
             }
 
+            if (diagPauseStart()) {
+                latestInput.buttons |= n64::Start;
+            }
+
             diagCamera(latestInput, state);
         }
 
@@ -2787,6 +2848,108 @@ private:
             menuPanelDump = tourStep;
             dk64vr_logf("diag menu: %s: screen %s, tab %d, focus %s, pointer %s", step.name, (menuLast.screen == menu::Screen::Quick) ? "quick" : "full",
                 int(menuLast.tab), menuLast.focus.c_str(), (diagPointerU >= 0.0f) ? "on" : "off");
+        }
+    }
+
+    // Diagnostic diag_pause_at: after that many seconds of live stereo play, an eye dump (the
+    // world as it will freeze), then Start for 0.2 s (the game's pause menu); once the pause
+    // panel has been up for 1.5 s and again 3 s later, the panel (with alpha: vr-menu-pause-N),
+    // the HUD image (vr-hud-10N) and the layers; a second later Start again (back to play). True
+    // while Start should be held.
+    bool diagPauseStart() {
+        const double at = setting("diag_pause_at");
+        if ((at <= 0.0) || (diagPauseStep >= 5)) {
+            return false;
+        }
+
+        const dk64vr_game_state state = gameState();
+        const bool live = stereoLatched && !frozen && !cinemaActive && (state.scene == DK64VR_SCENE_GAMEPLAY);
+        switch (diagPauseStep) {
+        case 0:
+            if (!live) {
+                diagPausePlayS = 0.0;
+                return false;
+            }
+
+            if (diagPausePlayS == 0.0) {
+                diagPausePlayS = displayS;
+            }
+
+            if ((displayS - diagPausePlayS) >= at) {
+                menuEyeDump = true;
+                diagPauseStep = 1;
+                diagPauseS = displayS;
+            }
+
+            return false;
+        case 1:
+            if ((displayS - diagPauseS) < 0.5) {
+                return false;
+            }
+
+            diagPauseStep = 2;
+            diagPauseS = displayS;
+            dk64vr_logf("diag: pausing (Start)");
+            return true;
+        case 2:
+            if ((displayS - diagPauseS) < 0.2) {
+                return true;
+            }
+
+            diagPauseStep = 3;
+            diagPauseS = 0.0;
+            return false;
+        case 4:
+            if ((displayS - diagPauseS) < 1.0) {
+                return false;
+            }
+
+            if ((displayS - diagPauseS) < 1.2) {
+                if (!diagResumeLogged) {
+                    diagResumeLogged = true;
+                    dk64vr_logf("diag: resuming (Start)");
+                }
+
+                return true;
+            }
+
+            diagPauseStep = 5;
+            return false;
+        default:
+            if (!pausePanel) {
+                if ((diagPauseS == 0.0) && (displayS > diagPauseLimitS) && (diagPauseLimitS > 0.0)) {
+                    dk64vr_logf("diag: no pause panel 10 s after Start");
+                    diagPauseStep = 5;
+                }
+
+                if (diagPauseLimitS == 0.0) {
+                    diagPauseLimitS = displayS + 10.0;
+                }
+
+                return false;
+            }
+
+            if (diagPauseS == 0.0) {
+                diagPauseS = displayS;
+            }
+
+            const double t = displayS - diagPauseS;
+            const int due = (t >= 4.5) ? 2 : ((t >= 1.5) ? 1 : 0);
+            if (due > diagPauseDumps) {
+                diagPauseDumps = due;
+                menuDumpName = "pause";
+                menuPanelDump = due;
+                hudDumpDue = true;  // the HUD image too (the pause menu's, in a Hud frame)
+                hudDumpIndex = 100 + uint64_t(due);
+                layersLogDue = true;
+                dk64vr_logf("diag: pause dump %d (scene %s)", due, sceneName(state.scene));
+                if (due == 2) {
+                    diagPauseStep = 4;
+                    diagPauseS = displayS;
+                }
+            }
+
+            return false;
         }
     }
 
@@ -3329,6 +3492,9 @@ private:
     Swapchain hudChain;
     bool hudShown = false;
     bool hudReleasedOnce = false;
+    bool pauseHudDrawn = false;   // a Hud frame (the pause menu) drew the HUD image since it began
+    uint32_t eyeCameraMatrixId = 0;  // the matrix group of the projection eyeCamera is called for
+    bool skyLogged = false;
     bool hudLogged = false;
     bool hudDumpDue = false;
     uint64_t hudDumpIndex = 0;
@@ -3492,6 +3658,9 @@ private:
     bool pointerDown = false;
     uint32_t diagMenuReads = 0;
     bool diagStartLogged = false;
+    int diagPauseStep = 0, diagPauseDumps = 0;
+    bool diagResumeLogged = false;
+    double diagPausePlayS = 0.0, diagPauseS = 0.0, diagPauseLimitS = 0.0;
     double diagHudNextS = 0.0;
     double diagSnapNextS = 0.0;
     int diagSnapFrames = -1;

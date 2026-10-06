@@ -21,6 +21,12 @@ static const vr_game_profile_ext banjo_ext = {
     .reports_turn_applicability = 1,
     .billboard_groups = banjo_billboards,
     .billboard_group_count = (int)(sizeof(banjo_billboards) / sizeof(banjo_billboards[0])),
+    // pause_menu_patches.c skips the pause background's frame copy in VR: paused frames draw the
+    // menu (zoomboxes, text, item counters, spinning items) over a black fill.
+    .pause_menu_hud = 1,
+    // sky_draw (patches/sky_transform_tagging.c): PROJECTION_SKYBOX_TRANSFORM_ID, camera-centred
+    // sky models with an identity view.
+    .sky_camera_group = 0x00001001u,
 };
 
 const vr_game_profile_ext *vr_game_profile_ext_get(void) {

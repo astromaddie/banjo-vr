@@ -2545,6 +2545,7 @@ static void testBillboardGroups() {
     // DK64's default extension names none.
     CHECK(vr_game_profile_ext_get()->billboard_group_count == 0);
     CHECK(vr_game_profile_ext_get()->billboard_groups == nullptr);
+    CHECK(vr_game_profile_ext_get()->pause_menu_hud == 0);  // DK64's pause keeps its flat panel
     const RT64::VrBillboardGroup groups[2] = {
         { 0x40000000u, 0x7FFFFFFFu, RT64::VrBillboardMode::Cylindrical },
         { 0x80000000u, 0xBFFFFFFFu, RT64::VrBillboardMode::Spherical } };

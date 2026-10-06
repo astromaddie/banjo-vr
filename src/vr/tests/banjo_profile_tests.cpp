@@ -37,6 +37,8 @@ int main() {
     // Billboards: the patches' flags (patches/transform_ids.h) over every existing id.
     const vr_game_profile_ext *ext = vr_game_profile_ext_get();
     CHECK(ext->billboard_group_count == 2);
+    // The pause menu goes to the HUD image over the frozen world (pause_menu_patches.c).
+    CHECK(ext->pause_menu_hud == 1);
     auto modeOf = [&](uint32_t id) {
         for (int g = 0; g < ext->billboard_group_count; g++) {
             if ((id >= ext->billboard_groups[g].first_id) && (id <= ext->billboard_groups[g].last_id)) {

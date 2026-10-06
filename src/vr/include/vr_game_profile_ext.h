@@ -39,6 +39,17 @@ typedef struct vr_game_profile_ext {
     // NULL/0: none (DK64).
     const vr_billboard_group *billboard_groups;
     int billboard_group_count;
+    // Nonzero: the game's pause menu draws no world while paused (Banjo's game side drops the
+    // copy of the last frame it draws behind the menu in VR), so under the pause the host keeps
+    // the frozen, dimmed stereo world and shows the menu's own draws from RT64's HUD image
+    // (VrFrame::Mode::Hud) where the panel would be, over transparent black. Zero: the pause
+    // shows the game's whole flat frame on the panel (DK64).
+    int pause_menu_hud;
+    // A camera matrix group (one of the profile's camera groups) whose projection draws a sky
+    // model centred on the game camera (Banjo: 0x1001, the native 3D sky). Its eye cameras keep
+    // the eye's rotation and projection but sit at the head's centre without head translation,
+    // so the sky is at infinity: no disparity and no parallax against the world. 0: none (DK64).
+    uint32_t sky_camera_group;
 } vr_game_profile_ext;
 
 const vr_game_profile_ext *vr_game_profile_ext_get(void);

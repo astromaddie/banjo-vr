@@ -70,6 +70,9 @@ static sfvr_setting_key port_keys[] = {
 	// Camera-facing billboards the game tags (sprites, particles) face the point between the
 	// eyes instead of the flat game camera. 0 = as the game drew them.
 	{ "billboard_facing", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
+	// A game's camera-centred sky (vr_game_profile_ext.h, sky_camera_group) at infinity: both eyes
+	// see it from the head's centre. 0 = from each eye, like the world (finite sky distance).
+	{ "sky_at_infinity", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
 	// The flat panel for menus, transitions and anything that is not 3D play: a world-locked
 	// quad over a black projection layer.
 	{ "panel_distance", SFVR_SETTING_FLOAT, 2.0, 0.8, 20.0, NULL },
@@ -105,6 +108,10 @@ static sfvr_setting_key port_keys[] = {
 	// Diagnostic: press Start for 0.2 s this many seconds after the session starts (the game's
 	// pause menu). 0 = off.
 	{ "diag_start_at", SFVR_SETTING_FLOAT, 0.0, 0.0, 3600.0, NULL },
+	// Diagnostic: after this many seconds of live stereo play, an eye dump, then Start (the
+	// game's pause menu), then the pause panel and HUD image dumped twice (vr-menu-pause-*.png,
+	// vr-hud-10*.png), then Start again (back to play). 0 = off.
+	{ "diag_pause_at", SFVR_SETTING_FLOAT, 0.0, 0.0, 3600.0, NULL },
 	// Diagnostic: show the game's HUD counters every N seconds of stereo play. 0 = off.
 	{ "diag_hud_seconds", SFVR_SETTING_FLOAT, 0.0, 0.0, 600.0, NULL },
 	// Diagnostic: a snap turn to the right every N seconds of stereo play, with the camera
