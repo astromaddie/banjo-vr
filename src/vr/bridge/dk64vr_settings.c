@@ -120,7 +120,11 @@ static sfvr_setting_key port_keys[] = {
 	{ "diag_turn_stick", SFVR_SETTING_FLOAT, 0.0, -1.0, 1.0, NULL },
 	// Diagnostic: dump_frame and dump_interval count only frames of live stereo play (no cinema,
 	// no frozen world), so dumps land in gameplay after a long intro.
-	{ "dump_in_play", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL }
+	{ "dump_in_play", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL },
+	// Diagnostic: once in play for a few seconds, the game saves the current game once through
+	// its own save routine (what the pause menu's SAVE AND QUIT calls), so a test run leaves a
+	// file that skips the new-game intro on later launches. Never in a menu.
+	{ "diag_save_in_play", SFVR_SETTING_BOOL, 0.0, 0.0, 1.0, NULL }
 };
 #define PORT_KEY_COUNT (sizeof(port_keys) / sizeof(port_keys[0]))
 

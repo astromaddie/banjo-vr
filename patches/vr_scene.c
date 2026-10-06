@@ -74,4 +74,5 @@ void vr_frame_hook(void) {
     } else {
         vr_logged_scene = VR_SCENE_UNKNOWN;
     }
+    vr_diag_save_tick(scene);
 }

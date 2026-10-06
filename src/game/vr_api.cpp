@@ -27,6 +27,7 @@ std::atomic<uint32_t> sequence{0};
 std::atomic<uint32_t> snapshot[kWords]{};
 std::mutex writer_mutex;
 std::atomic<int> active{0};
+std::atomic<int> diag_save_in_play{0};
 
 bool force_patches() {
     static const bool forced = [] {
@@ -67,12 +68,22 @@ extern "C" int dk64vr_is_active(void) {
 extern "C" void dk64vr_set_active(int value) {
     active.store(value != 0, std::memory_order_relaxed);
 }
+extern "C" void dk64vr_set_diag_save_in_play(int enabled) {
+    diag_save_in_play.store(enabled != 0, std::memory_order_relaxed);
+}
+extern "C" int dk64vr_diag_save_in_play(void) {
+    return diag_save_in_play.load(std::memory_order_relaxed);
+}
 // The runtime's quit flag (librecomp/src/recomp.cpp), so a paused game never holds up a quit.
 extern std::atomic_bool exited;
 
 extern "C" void recomp_vr_is_active(uint8_t *rdram, recomp_context *ctx) {
     (void)rdram;
     _return(ctx, dk64vr_is_active());
+}
+extern "C" void recomp_vr_diag_save_in_play(uint8_t *rdram, recomp_context *ctx) {
+    (void)rdram;
+    _return(ctx, dk64vr_diag_save_in_play());
 }
 extern "C" void recomp_vr_publish_game_state(uint8_t *rdram, recomp_context *ctx) {
     // RDRAM is word-swapped: aligned 32-bit ints/floats are already host-endian.

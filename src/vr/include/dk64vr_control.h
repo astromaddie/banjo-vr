@@ -30,6 +30,12 @@ int dk64vr_take_turn(void);
 void dk64vr_request_hud_diag(void);
 int dk64vr_take_hud_diag(void);
 
+// Diagnostic (diag_save_in_play): the host sets this once from the setting; the game side reads it
+// through recomp_vr_diag_save_in_play (src/game/vr_api.cpp) and saves the game once in play.
+// Always 0 without the VR host.
+void dk64vr_set_diag_save_in_play(int enabled);
+int dk64vr_diag_save_in_play(void);
+
 #ifdef __cplusplus
 }
 #endif

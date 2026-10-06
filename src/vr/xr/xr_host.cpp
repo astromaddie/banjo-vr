@@ -173,6 +173,7 @@ public:
         const std::string settingsPath = (dataDir / "vr.toml").string();
         dk64vr_settings_load(&settings, settingsPath.c_str());
         logSettings();
+        dk64vr_set_diag_save_in_play(setting("diag_save_in_play") != 0.0 ? 1 : 0);
 
         // Establish this before the loader enumerates implicit API layers or creates Vulkan.
         // Explicit 0 is a Valve-only diagnostic run; FDM and KHR rate features cannot coexist.
