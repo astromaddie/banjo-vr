@@ -17,6 +17,7 @@ s32 bainput_should_rotate_camera_left(void);
 s32 bainput_should_rotate_camera_right(void);
 void ncDynamicCamera_setState(s32 state);
 void ncDynamicCamera_getPosition(f32 position[3]);
+void func_802C069C(void);
 void func_80291488(s32 mode);
 
 static s32 vr_turn_owned;
@@ -62,7 +63,15 @@ void vr_apply_comfort_turn(s32 camera_type) {
         if (vr_turn_owned) {
             f32 dx = eye[0] - vr_turn_last_eye[0], dy = eye[1] - vr_turn_last_eye[1];
             f32 dz = eye[2] - vr_turn_last_eye[2];
-            if (dx*dx + dy*dy + dz*dz > 400.0f*400.0f || ncDynamicCamera_getState() != 0x13) {
+            if (dx*dx + dy*dy + dz*dz > 400.0f*400.0f) {
+                if (ncDynamicCamera_getState() == 0x13) {
+                    func_802C069C();
+                    D_8037DBA4 = D_8037DBA8;
+                }
+                vr_turn_owned = 0;
+                vr_turn_remaining = 0.0f;
+            }
+            else if (ncDynamicCamera_getState() != 0x13) {
                 vr_turn_owned = 0;
                 vr_turn_remaining = 0.0f;
             }

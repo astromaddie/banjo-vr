@@ -687,6 +687,16 @@ public:
             if (shownStatsFrame != frameCount) {
                 shownStatsFrame = frameCount;  // once a frame (a frame can have several camera projections)
                 camShownStats.add(cameraPoseFromView(gameView));
+                if (setting("diag_camera_log") != 0.0) {
+                    // Log the actual post-orbit matrix heading, unwrapped near the requested
+                    // heading. This distinguishes a rendered snap from merely writing a target.
+                    const float expected = turn.heading + turn.shownDelta;
+                    const float actual = expected + wrapAngle(shownHeading - expected);
+                    const Vec3 p = viewPosition(gameView);
+                    dk64vr_logpf("[vr-cam]", "turn f %" PRIu64 " applicable %d game %.3f target %.3f remaining %.3f shown %.3f pos %.2f %.2f %.2f focus %.2f %.2f %.2f",
+                        frameCount, int(turnApplicable()), turn.heading * 57.2957795f, turn.target * 57.2957795f,
+                        turn.shownDelta * 57.2957795f, actual * 57.2957795f, p.x, p.y, p.z, camFocus.x, camFocus.y, camFocus.z);
+                }
             }
         }
 
@@ -2330,11 +2340,6 @@ private:
             static const char *why[] = { "", "arrived", "timed out", "turned by the game", "not applicable" };
             dk64vr_logf("turn: game camera %s after %.2f s (%.1f deg left)", why[int(end)],
                 displayS - turn.start, turn.shownDelta * 57.2957795f);
-        }
-        if (setting("diag_camera_log") != 0.0) {
-            dk64vr_logpf("[vr-cam]", "turn f %" PRIu64 " applicable %d game %.3f target %.3f remaining %.3f shown %.3f",
-                frameCount, int(turnApplicable()), turn.heading * 57.2957795f, turn.target * 57.2957795f,
-                turn.shownDelta * 57.2957795f, (turn.heading + turn.shownDelta) * 57.2957795f);
         }
     }
 

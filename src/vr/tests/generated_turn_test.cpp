@@ -165,6 +165,15 @@ int main() {
     }
     assert(std::fabs(f(rdram,K_vr_turn_remaining))<0.01f && largeTicks<239);
     std::cout << "native unwrapped debt arrival: " << largeTicks*dt << " s\n";
+    dk64vr_request_turn(45); call(vr_apply_comfort_turn,rdram,2);
+    position[0]+=500; call(vr_apply_comfort_turn,rdram,2);
+    assert(f(rdram,K_vr_turn_remaining)==0);
+    assert(f(rdram,K_D_8037DBA4)==f(rdram,K_D_8037DBA8));
+    assert(call(vr_comfort_camera_held,rdram).r2==0); // no old heading imposed across a cut
+    rButton=true; dk64vr_request_turn(45); call(vr_apply_comfort_turn,rdram,2);
+    assert(!dk64vr_turn_applicable()); rButton=false;
+    cLeft=true; dk64vr_request_turn(45); call(vr_apply_comfort_turn,rdram,2);
+    assert(!dk64vr_turn_applicable()); cLeft=false;
     // Locked/node/action cameras, boss map, first person, missing player, and disabled dispatch
     // reject queued turns and reset host applicability. Returning to play cannot replay them.
     for(int excluded : {0,5,6,8,9,10,12,13,15,16,17,18}) {
