@@ -40,6 +40,7 @@
 #include "vr_game_profile_ext.h"
 #include "dk64vr_log.h"
 #include "dk64vr_math.h"
+#include "dk64vr_turn.h"
 #include "dk64vr_sched.h"
 #include "dk64vr_settings.h"
 #include "sfvr/sfvr_perf.h"
@@ -542,13 +543,9 @@ public:
                 camRawStats.restart();
                 camOutStats.restart();
                 camShownStats.restart();
-                if (turnActive || (turnReleaseFrom != 0.0f)) {
-                    // A camera cut mid-turn (respawn, warp): the turn is over, nothing to orbit.
-                    turnActive = false;
-                    turnDelta = turnShownDelta = turnReleaseFrom = 0.0f;
-                }
+                turn.reset();
+                dk64vr_clear_turn();
 
-                headingValid = false;
                 if (camLogCuts()) {
                     dk64vr_logpf("[vr-cam]", "cut (%s) at game frame %u", sceneCut ? "scene change" : "camera jump", state.frame);
                 }
@@ -671,26 +668,40 @@ public:
         // its camera after it. Headings are unwrapped, so a smooth turn may run any distance ahead.
         if (turnFrame != frameCount) {
             turnFrame = frameCount;
-            updateTurn(gameView);
-        }
-
-        if (turnShownDelta != 0.0f) {
-            if (camOffsetActive) {
-                // Keep DK's sampled look-at point fixed even with a shorter/lower orbit radius.
-                gameView = orbitViewAround(gameView, turnShownDelta, camFocus);
+            updateTurn(camBaseView);
+            turnCorrection = Mat4();
+            if (turn.shownDelta != 0.0f) {
+                if (camOffsetActive || vr_game_profile_ext_get()->reports_turn_applicability) {
+                    // The main camera supplies the absolute focus. The sky's origin is rebased:
+                    // share this camera-space correction rather than orbiting it about that focus.
+                    turnCorrection = orbitViewCorrection(camBaseView, turn.shownDelta, camFocus);
+                }
+                else {
+                    const dk64vr_game_state state = gameState();
+                    const float dx = state.cam_at[0] - state.cam_eye[0], dz = state.cam_at[2] - state.cam_eye[2];
+                    const Mat4 turned = orbitViewBy(camBaseView, turn.shownDelta, std::sqrt(dx * dx + dz * dz));
+                    turnCorrection = mul(rigidInverse(camBaseView), turned);
+                }
             }
-            else {
-                const dk64vr_game_state state = gameState();
-                const float dx = state.cam_at[0] - state.cam_eye[0], dz = state.cam_at[2] - state.cam_eye[2];
-                gameView = orbitViewBy(gameView, turnShownDelta, std::sqrt(dx * dx + dz * dz));
-            }
         }
+        gameView = mul(gameView, turnCorrection);
 
         if (eye == 0) {
             shownHeading = viewHeading(gameView);
             if (shownStatsFrame != frameCount) {
                 shownStatsFrame = frameCount;  // once a frame (a frame can have several camera projections)
-                camShownStats.add(cameraPoseFromView(gameView));
+                const Mat4 mainShown = mul(camBaseView, turnCorrection);
+                camShownStats.add(cameraPoseFromView(mainShown));
+                if (setting("diag_camera_log") != 0.0) {
+                    // Measure the rendered projection's post-orbit heading, not the target.
+                    // Position uses the main camera's world origin even when the sky draws first.
+                    const float expected = turn.heading + turn.shownDelta;
+                    const float actual = expected + wrapAngle(shownHeading - expected);
+                    const Vec3 p = viewPosition(mainShown);
+                    dk64vr_logpf("[vr-cam]", "turn f %" PRIu64 " applicable %d game %.3f target %.3f remaining %.3f shown %.3f pos %.2f %.2f %.2f focus %.2f %.2f %.2f",
+                        frameCount, int(turnApplicable()), turn.heading * 57.2957795f, turn.target * 57.2957795f,
+                        turn.shownDelta * 57.2957795f, actual * 57.2957795f, p.x, p.y, p.z, camFocus.x, camFocus.y, camFocus.z);
+                }
             }
         }
 
@@ -1984,12 +1995,12 @@ private:
         camRawStats.restart();
         camOutStats.restart();
         camShownStats.restart();
-        headingValid = false;
-        turnActive = false;
-        turnDelta = turnShownDelta = turnReleaseFrom = 0.0f;
+        turn.reset();
+        dk64vr_clear_turn();
         camCorrection = Mat4();
         camOffsetActive = false;
         camOffsetCorrection = Mat4();
+        turnCorrection = Mat4();
     }
 
     // Once per display frame, at its first camera projection: the correction from RT64's linear
@@ -1999,7 +2010,10 @@ private:
     void updateCameraCorrection(const Mat4 &firstView) {
         camCorrectionFrame = frameCount;
         camCorrection = Mat4();
+        camBaseView = firstView;
         camOffsetActive = false;
+        const dk64vr_game_state focusState = gameState();
+        camFocus = { focusState.cam_at[0], focusState.cam_at[1], focusState.cam_at[2] };
         if (!camSmoother.ready()) {
             camLastSampleS = displayS;
             return;
@@ -2017,18 +2031,19 @@ private:
         camLastSampleS = displayS;
         const Mat4 linearView = camSmoother.linear(w);
         const Mat4 smoothView = camSmoother.sample(w, dt, level);
+        camBaseView = smoothView;
         camCorrection = mul(rigidInverse(linearView), smoothView);
 
         const dk64vr_game_state state = gameState();
         const float lower = float(setting("camera_lower")), closer = float(setting("camera_closer"));
         camOffsetActive = (state.scene == DK64VR_SCENE_GAMEPLAY) && camSmoother.focusReady() && (lower != 0.0f || closer != 0.0f);
+        if (camSmoother.focusReady()) camFocus = camSmoother.focus(w, level);
         if (camOffsetActive) {
-            camFocus = camSmoother.focus(w, level);
             // One offset correction for every camera projection of both eyes. Apply AFTER
             // smoothing, using the focus sampled with the same history/weight; no 30 Hz offset.
-            const Mat4 corrected = mul(firstView, camCorrection);
-            const Mat4 adjusted = thirdPersonView(corrected, camFocus, lower, closer);
-            camOffsetCorrection = mul(rigidInverse(corrected), adjusted);
+            const Mat4 adjusted = thirdPersonView(smoothView, camFocus, lower, closer);
+            camOffsetCorrection = mul(rigidInverse(smoothView), adjusted);
+            camBaseView = adjusted;
             if (setting("diag_camera_log") != 0.0) {
                 const Vec3 p = viewPosition(adjusted);
                 dk64vr_logpf("[vr-cam]", "origin f %" PRIu64 " focus %.2f %.2f %.2f adjusted %.2f %.2f %.2f", frameCount, camFocus.x, camFocus.y, camFocus.z, p.x, p.y, p.z);
@@ -2169,11 +2184,11 @@ private:
         if (relative != 0) {
             Pose aim;
             if (input.aimPose((relative == 1) ? 0 : 1, aim)) {
-                return quatYaw(quatMul(quatConj(origin.q), aim.q));
+                return quatYaw(quatMul(quatConj(origin.q), aim.q)) + turn.shownDelta;
             }
         }
 
-        return quatYaw(headInOriginQ) + turnShownDelta;  // plus the turn the view shows ahead of the game camera
+        return quatYaw(headInOriginQ) + turn.shownDelta;  // plus the turn the view shows ahead of the game camera
     }
 
     void updateInput(bool renderingNow) {
@@ -2193,7 +2208,7 @@ private:
         // Diagnostic: right stick X held at diag_turn_stick for 4 s, released for 4 s, in
         // stereo play, as the mapper would turn with it (snap: one step a hold).
         const double turnStick = setting("diag_turn_stick");
-        if ((turnStick != 0.0) && context.stereoPlay && (setting("right_stick_x") == 0.0)) {
+        if ((turnStick != 0.0) && context.stereoPlay && turnApplicable() && (setting("right_stick_x") == 0.0)) {
             if (diagTurnStartS == 0.0) {
                 diagTurnStartS = displayS;
             }
@@ -2237,7 +2252,7 @@ private:
             sfvr_haptic_event(&input.haptics, SFVR_HAND_BOTH, SFVR_HAPTIC_SYSTEM);
         }
 
-        if (r.turnDeg != 0.0f) {
+        if (r.turnDeg != 0.0f && turnApplicable()) {
             applyTurn(r.turnDeg);
         }
 
@@ -2318,69 +2333,28 @@ private:
     }
 
     // Once a display frame, from the (smoothed) game view: the game camera's unwrapped heading
-    // and the orbit the view needs (turnShownDelta).
-    void updateTurn(const Mat4 &gameView) {
-        const float raw = viewHeading(gameView);
-        headingUnwrapped = headingValid ? (headingUnwrapped + wrapAngle(raw - headingRaw)) : raw;
-        headingRaw = raw;
-        headingValid = true;
+    // and the orbit the view needs (turn.shownDelta).
+    bool turnApplicable() const {
         const dk64vr_game_state state = gameState();
-        if (turnActive) {
-            const float delta = turnTarget - headingUnwrapped;
-            turnDelta = delta;
-            turnShownDelta = delta;
-            // Done when the game camera arrives. Given up when it takes too long after the last
-            // turn input, when the game turns it (C-left/C-right), or outside play; the rest of
-            // the offset then unwinds over 0.4 s instead of jumping.
-            const bool settled = std::fabs(delta) < 0.004f;
-            const bool timedOut = (displayS - turnStartS) > 8.0;
-            const bool overtaken = (latestInput.buttons & (n64::CLeft | n64::CRight)) != 0;
-            const bool leftPlay = (state.scene != DK64VR_SCENE_GAMEPLAY) || frozen;
-            if (settled || timedOut || overtaken || leftPlay) {
-                dk64vr_logf("turn: game camera %s after %.2f s (%.1f deg left)", settled ? "arrived" : (timedOut ? "timed out" : (overtaken ? "turned by the game" : "left play")),
-                    displayS - turnStartS, delta * 180.0f / 3.1415926f);
-                turnActive = false;
-                turnDelta = 0.0f;
-                turnReleaseFrom = (settled || leftPlay) ? 0.0f : delta;
-                turnReleaseS = displayS;
-                turnShownDelta = turnReleaseFrom;
-            }
-        }
-        else if (turnReleaseFrom != 0.0f) {
-            const float t = float(std::clamp((displayS - turnReleaseS) / 0.4, 0.0, 1.0));
-            turnShownDelta = turnReleaseFrom * (1.0f - t * t * (3.0f - 2.0f * t));
-            if (t >= 1.0f) {
-                turnReleaseFrom = 0.0f;
-                turnShownDelta = 0.0f;
-            }
-        }
-        else {
-            turnShownDelta = 0.0f;
+        const vr_game_profile_ext *ext = vr_game_profile_ext_get();
+        return state.scene == DK64VR_SCENE_GAMEPLAY && !frozen && !gamePaused
+            && (!ext->reports_turn_applicability || dk64vr_turn_applicable());
+    }
+
+    void updateTurn(const Mat4 &gameView) {
+        const TurnEnd end = turn.update(viewHeading(gameView), displayS, turnApplicable(),
+            (latestInput.buttons & (n64::CLeft | n64::CRight)) != 0);
+        if (end != TurnEnd::None) {
+            static const char *why[] = { "", "arrived", "timed out", "turned by the game", "not applicable" };
+            dk64vr_logf("turn: game camera %s after %.2f s (%.1f deg left)", why[int(end)],
+                displayS - turn.start, turn.shownDelta * 57.2957795f);
         }
     }
 
     void applyTurn(float deg) {
-        // Rotates the game camera's heading (the camera patch takes it through recomp_vr_take_turn,
-        // dk64vr_control.h) by the step; the eye camera follows the game camera, so the world
-        // turns about Donkey Kong. The view shows the new heading at once (updateTurn); the game
-        // camera eases after it. Smooth turning calls this every frame with a small step.
-        if (!turnActive) {
-            // From the heading shown now (including any offset still unwinding).
-            turnTarget = (headingValid ? headingUnwrapped : 0.0f) + turnShownDelta;
-            turnReleaseFrom = 0.0f;
-        }
-
-        turnTarget -= deg * 3.1415926f / 180.0f;
-        turnActive = true;
-        turnStartS = displayS;
-
-        turnRemainder += deg;
-        const int whole = int(turnRemainder);
-        turnRemainder -= float(whole);
-        if (whole != 0) {
-            dk64vr_request_turn(whole);
-        }
-
+        if (!turnApplicable() || !turn.headingValid) return;
+        const int whole = turn.apply(deg, displayS, true);
+        if (whole != 0) dk64vr_request_turn(whole);
         turnLogDeg += deg;
         if (std::fabs(deg) >= 5.0f) {
             dk64vr_logf("turn: %.0f deg", deg);
@@ -3349,6 +3323,7 @@ private:
     bool diagTurnHeld = false;
     Mat4 camCorrection;
     Mat4 camOffsetCorrection;
+    Mat4 camBaseView, turnCorrection;
     Vec3 camFocus;
     bool camOffsetActive = false;
     uint64_t camCorrectionFrame = UINT64_MAX;
@@ -3420,18 +3395,9 @@ private:
     float cinemaHudSize[2] = { 3.6f, 2.7f };
     FovTangents cinemaGameTan = { -0.552f, 0.552f, 0.414f, -0.414f };
     Quat headInOriginQ;
-    float turnRemainder = 0.0f;
-    bool turnActive = false;
-    float turnTarget = 0.0f;          // unwrapped heading the view shows while turning
-    float turnDelta = 0.0f;           // what the game camera still has to turn
-    float turnShownDelta = 0.0f;      // the orbit applied this frame
-    float turnReleaseFrom = 0.0f;     // an abandoned turn's offset, unwinding
-    double turnReleaseS = 0.0;
+    ComfortTurn turn;
     uint64_t turnFrame = UINT64_MAX;
-    bool headingValid = false;
-    float headingRaw = 0.0f, headingUnwrapped = 0.0f;
-    float turnLogDeg = 0.0f;          // smooth turning: degrees requested in the [vr-cam] window
-    double turnStartS = 0.0;
+    float turnLogDeg = 0.0f;
     float shownHeading = 0.0f;
     double blinkUntilS = 0.0;
     struct PointerState {

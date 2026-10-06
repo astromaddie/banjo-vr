@@ -65,3 +65,44 @@ with (OUT / 'test_symbols.h').open('a') as out:
         for key in ('rom', 'vram', 'size'):
             value = re.search(key + r' = (0x[0-9A-Fa-f]+)', block)[1]
             out.write(f'#define K_{tag}_{key} {value}u\n')
+
+# Comfort-turn production harness: native R-look follower, real yaw/target initialization,
+# VR request gate and the existing tagged camera dispatch. Scenery/collision/input are controlled.
+turn_patched = ['vr_apply_comfort_turn', 'vr_comfort_camera_active', 'vr_comfort_camera_held',
+                'ncCamera_update', 'ncDynamicCam13_init', 'func_802C069C', 'func_802C02D4',
+                'recomp_analog_camera_held', 'func_80290E8C', 'func_80291108', 'func_802911E0']
+turn_patched += re.findall(r'^RECOMP_FUNC void (vr_turn_allowed_\w+)\(', patched, re.M)
+turn_original = ['ncCamera_update']
+turn_support = ['ncDynamicCam13_update', 'func_802BDB30', 'mlDiffDegF', 'mlNormalizeAngle',
+                'mlAbsF', 'ml_mapAbsRange_f', 'ml_map_f', 'ml_clamp_f', 'func_802C0640']
+turn_functions = [extract(patched, name) for name in turn_patched]
+assert all(turn_functions), 'regenerate turn patches first'
+needed = set(turn_original + turn_support)
+for path in (ROOT / 'RecompiledFuncs').glob('*.c'):
+    original_text = path.read_text()
+    for name in list(needed):
+        body = extract(original_text, name)
+        if body:
+            if name in turn_original:
+                body = body.replace('void ' + name + '(', 'void baseline_' + name + '(', 1)
+            turn_functions.append(body)
+            needed.remove(name)
+    if not needed: break
+assert not needed, f'missing turn originals {needed}'
+turn_text = '\n'.join(turn_functions)
+names = set(re.findall(r'^RECOMP_FUNC void (\w+)\(', turn_text, re.M))
+deps = set(re.findall(r'^\s+(\w+)\(rdram, ctx\);', turn_text, re.M))
+header = '#include "recomp.h"\n#ifdef __cplusplus\nextern "C" {\n#endif\n'
+header += ''.join(f'void {name}(uint8_t *, recomp_context *);\n' for name in sorted(names | deps))
+header += '#ifdef __cplusplus\n}\n#endif\n'
+(OUT / 'selected_turn.h').write_text(header)
+(OUT / 'selected_turn.c').write_text('#include "selected_turn.h"\n' + turn_text)
+with (OUT / 'test_symbols.h').open('a') as out:
+    for name in ['D_8037C060','D_8037C062','D_8037DB40','D_8037DBA0','D_8037DBA4','D_8037DBA8',
+                 'D_8037DBAC','D_8037D9E0','D_8037D9C8','D_8037D8C5','D_8037D8C6','ncCameraType',
+                 'cameraUpdateEnabled','vr_turn_remaining','vr_turn_last_yaw',
+                 'dynamic_camera_target_frame','dynamic_camera_target_frames','dynamic_camera_targets',
+                 'r_look_initialized_from_r_button','r_look_get_target_from_previous_frame_fix',
+                 'analog_inherited_distance']:
+        out.write(f'#define K_{name} {syms[name]}u\n')
+print('Generated comfort-turn functions:', len(names), '; controlled callees:', ', '.join(sorted(deps-names)))

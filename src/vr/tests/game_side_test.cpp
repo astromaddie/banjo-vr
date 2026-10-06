@@ -9,6 +9,8 @@
 #include "../include/vr_game_profile.h"
 #include "../../../patches/vr_scene_rules.h"
 
+std::atomic_bool exited{false};
+
 int main(int argc, char **) {
     const bool forced = argc > 1;
     assert(dk64vr_is_active() == forced);

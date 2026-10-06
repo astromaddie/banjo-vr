@@ -67,6 +67,7 @@ extern "C" int dk64vr_is_active(void) {
 }
 extern "C" void dk64vr_set_active(int value) {
     active.store(value != 0, std::memory_order_relaxed);
+    if (!value) dk64vr_clear_turn();
 }
 extern "C" void dk64vr_set_diag_save_in_play(int enabled) {
     diag_save_in_play.store(enabled != 0, std::memory_order_relaxed);
@@ -90,6 +91,7 @@ extern "C" void recomp_vr_publish_game_state(uint8_t *rdram, recomp_context *ctx
     dk64vr_game_state state;
     std::memcpy(&state, _arg<0, const dk64vr_game_state *>(rdram, ctx), sizeof(state));
     dk64vr_publish_game_state(&state);
+    if (state.scene != DK64VR_SCENE_GAMEPLAY) dk64vr_clear_turn();
 
     // While the VR host pauses the game (headset off, focus lost, the VR settings menu:
     // dk64vr_control.h), the game thread waits here, once a frame, outside any game lock. Never
@@ -97,4 +99,10 @@ extern "C" void recomp_vr_publish_game_state(uint8_t *rdram, recomp_context *ctx
     while (dk64vr_is_paused() && !exited.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
+}
+extern "C" void recomp_vr_take_turn(uint8_t *rdram, recomp_context *ctx) {
+    (void)rdram;
+    const bool applicable = _arg<0, int>(rdram, ctx) != 0
+        && dk64vr_is_active() && !dk64vr_is_paused();
+    _return(ctx, dk64vr_take_turn_if_applicable(applicable));
 }
