@@ -34,10 +34,15 @@ _Static_assert(sizeof(VrGameState) == 76, "frozen snapshot ABI");
 
 DECLARE_FUNC(s32, recomp_vr_is_active);
 DECLARE_FUNC(void, recomp_vr_publish_game_state, const VrGameState*);
+// Positive degrees turn right. A rejected poll drops pending input and clears host orbit.
+DECLARE_FUNC(s32, recomp_vr_take_turn, s32 applicable);
 
 #ifdef MIPS
 void vr_frame_hook(void);
 void vr_capture_camera(f32 near, f32 far);
 extern s32 vr_sky_drawn;
+void vr_apply_comfort_turn(s32 camera_type);
+s32 vr_comfort_camera_active(void);
+s32 vr_comfort_camera_held(void);
 #endif
 #endif

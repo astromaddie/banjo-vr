@@ -45,3 +45,24 @@ target_link_libraries(banjo_profile_tests PRIVATE m)
 enable_testing()
 add_test(NAME dk64vr_tests COMMAND dk64vr_tests)
 add_test(NAME banjo_profile_tests COMMAND banjo_profile_tests)
+
+add_executable(comfort_turn_tests
+    ${CMAKE_CURRENT_LIST_DIR}/comfort_turn_tests.cpp
+    ${DK64VR_ROOT}/src/game/vr_api.cpp
+    ${DK64VR_ROOT}/src/vr/game/vr_control.cpp
+    ${DK64VR_ROOT}/src/vr/bridge/dk64vr_turn.cpp
+    ${DK64VR_ROOT}/src/vr/bridge/dk64vr_math.cpp
+    ${DK64VR_ROOT}/src/vr/bridge/dk64vr_input.cpp
+    ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_view.c
+    ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_turn.c)
+target_include_directories(comfort_turn_tests PRIVATE
+    ${DK64VR_ROOT}/src/vr/include ${DK64VR_ROOT}/src/vr/bridge
+    ${DK64VR_ROOT}/third_party/sfvr/include ${DK64VR_ROOT}/lib/rt64/src
+    ${DK64VR_ROOT}/lib/N64ModernRuntime/N64Recomp/include
+    ${DK64VR_ROOT}/lib/N64ModernRuntime/librecomp/include
+    ${DK64VR_ROOT}/lib/N64ModernRuntime/ultramodern/include)
+target_compile_options(comfort_turn_tests PRIVATE -Wall -Wextra -ffp-contract=off
+    -iquote${DK64VR_ROOT}/lib/bk-decomp/include)
+target_link_libraries(comfort_turn_tests PRIVATE m)
+add_test(NAME comfort_turn_tests COMMAND comfort_turn_tests)
+set_property(TARGET comfort_turn_tests PROPERTY CXX_STANDARD 20)

@@ -20,6 +20,8 @@ typedef struct vr_game_profile_ext {
     // the right stick's comfort turn works. Zero: the right stick defaults to the game's own
     // C-left / C-right camera swing (right_stick_x = camera).
     int takes_comfort_turn;
+    // Game reports whether its current camera accepts turning; cam_at is its orbit focus.
+    int reports_turn_applicability;
 } vr_game_profile_ext;
 
 const vr_game_profile_ext *vr_game_profile_ext_get(void);

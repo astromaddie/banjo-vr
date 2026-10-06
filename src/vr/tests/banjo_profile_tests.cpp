@@ -21,7 +21,9 @@ int main() {
     CHECK(std::fabs(k->min - 100.0 * 4.0 / 15.0) < 1e-6 && std::fabs(k->max - 100.0 * 100.0 / 15.0) < 1e-6);
     CHECK(std::fabs(dk64vr_settings_dk_height(&s) - 1.38) < 1e-9);
     CHECK(menu::dkHeightText(100.0) == "Banjo 1.4 m");
-    CHECK(dk64vr_settings_get(&s, "right_stick_x") == 1.0);  // no comfort-turn camera patch
+    CHECK(dk64vr_settings_get(&s, "right_stick_x") == 0.0);  // native comfort-turn camera patch
+    CHECK(dk64vr_settings_get(&s, "snap_angle") == 45.0);
+    CHECK(dk64vr_settings_get(&s, "turn_mode") == 0.0);
     // The presets include the default and stay inside the range (0.21 m to 5.2 m).
     const std::vector<double> presets = menu::dkHeightPresets(k->min, k->max);
     bool hasDefault = false;

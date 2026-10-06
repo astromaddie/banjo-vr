@@ -2,6 +2,7 @@
 #include "transform_ids.h"
 #include "functions.h"
 #include "input.h"
+#include "vr_state.h"
 
 #define DYNAMIC_CAMERA_STATE_R_LOOK 0x13
 
@@ -227,6 +228,7 @@ s32 recomp_get_first_person_inverted_y() {
 
 // @recomp Check whether the analog camera stick is currently held.
 bool recomp_analog_camera_held(bool read_x, bool read_y) {
+    if (read_x && vr_comfort_camera_held()) return TRUE;
     if (recomp_analog_camera_enabled() && recomp_analog_camera_allowed(FALSE)) {
         float input_x, input_y;
         recomp_analog_camera_get(&input_x, &input_y);
@@ -316,7 +318,7 @@ bool recomp_analog_camera_r_look_flight_mode() {
 
 // @recomp Patched to return the smoothed X value of the current camera offset based on the zoom level.
 RECOMP_PATCH f32 func_802BD8D4(void) {
-    if (recomp_analog_camera_enabled()) {
+    if (recomp_analog_camera_enabled() || vr_comfort_camera_active()) {
         bool r_look_mode = ncDynamicCamera_getState() == DYNAMIC_CAMERA_STATE_R_LOOK;
         if (r_look_mode && recomp_analog_camera_r_look_flight_mode()) {
             return D_8037DB18 + 300.0f;
@@ -417,6 +419,7 @@ RECOMP_PATCH void func_802C069C(void) {
 
 // @recomp Patched to skip over initialization of the target yaw based on the player's angle if analog cam is enabled.
 RECOMP_PATCH void ncDynamicCam13_init(void) {
+    bool analog_camera = recomp_analog_camera_enabled() || vr_comfort_camera_active();
     func_802BE230(5.0f, 8.0f);
     func_802BE244(8.0f, 15.0f);
 
@@ -424,7 +427,7 @@ RECOMP_PATCH void ncDynamicCam13_init(void) {
     // unless the the R button is currently held. We also compute the current camera distance to use it as the zoom
     // level in the case the current mode does not support camera zoom.
     // func_802C0150(6);
-    if (recomp_analog_camera_enabled() && !r_look_initialized_from_r_button) {
+    if (analog_camera && !r_look_initialized_from_r_button) {
         f32 camera_position[3];
         f32 camera_target[3];
         f32 camera_delta[3];
@@ -440,7 +443,7 @@ RECOMP_PATCH void ncDynamicCam13_init(void) {
     // @recomp Reduce the duration of the interpolation to this mode when the analog cam is enabled. Thanks to the
     // bug fix to the target computation, this is less necessary than before.
     //func_802C2264(0.5f);
-    func_802C2264(recomp_analog_camera_enabled() ? (7.0f / 30.0f) : 0.5f);
+    func_802C2264(analog_camera ? (7.0f / 30.0f) : 0.5f);
 
     // @recomp Enable the global variable that controls whether the previous frame target fix is used.
     r_look_get_target_from_previous_frame_fix = TRUE;
@@ -453,7 +456,7 @@ RECOMP_PATCH void ncDynamicCam13_init(void) {
     // @recomp We don't update the target yaw to match the player's angle if analog camera is enabled,
     // unless the the R button is currently held.
     // func_802C095C();
-    if (!recomp_analog_camera_enabled() || r_look_initialized_from_r_button) {
+    if (!analog_camera || r_look_initialized_from_r_button) {
         func_802C095C();
     }
     else {

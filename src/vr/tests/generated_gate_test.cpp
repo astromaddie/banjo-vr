@@ -1,6 +1,7 @@
 // Executes the actual N64Recomp output. Original ROM functions are the flat-path oracle;
 // callees supplying map/camera data and consuming display lists are controlled here.
 #include <cassert>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <iostream>
@@ -38,6 +39,7 @@ STUB(gu_sqrtf) { (void)rdram; ctx->f0.fl = std::sqrt(ctx->f12.fl); }
 STUB(ml_min_f) { (void)rdram; ctx->f0.fl = std::fmin(ctx->f12.fl, ctx->f14.fl); }
 STUB(func_802BB938) { (void)rdram; ctx->f0.fl = 65.0f; }
 STUB(yaw_get) { (void)rdram; ctx->f0.fl = 90.0f; }
+STUB(func_802C02D4) { vec(rdram, ctx->r4, {100,280,300}); }
 STUB(player_getPosition) { vec(rdram, ctx->r4, {100, 200, 300}); }
 STUB(viewport_getPosition_vec3f) { vec(rdram, ctx->r4, eye); }
 STUB(viewport_getRotation_vec3f) { vec(rdram, ctx->r4, rot); }
@@ -80,6 +82,8 @@ static recomp_context context() {
     return c;
 }
 static void close(float a, float b) { assert(std::fabs(a - b) < 0.0002f); }
+
+std::atomic_bool exited{false};
 
 int main() {
     std::vector<uint8_t> memory(32*1024*1024);
@@ -194,6 +198,7 @@ int main() {
     // sky latch and one publish/log per scene change. Host imports are production code.
     vec(rdram, addr(K_sViewportPosition), {10,20,30});
     vec(rdram, addr(K_sViewportRotation), {0,90,90}); f(rdram, K_sViewportFOVy) = 40;
+    dk64vr_set_active(0);
     auto c = context(); c.f12.fl = 23; c.f14.fl = 10000; c.f_odd = &c.f0.u32h; vr_capture_camera(rdram,&c);
     dk64vr_set_active(0); invoke(vr_frame_hook); assert(logs == 0);
     dk64vr_game_state snapshot{}; dk64vr_get_game_state(&snapshot);
@@ -211,6 +216,13 @@ int main() {
     assert(snapshot.scene == DK64VR_SCENE_PAUSE && logs == 2);
     present = false; invoke(vr_frame_hook); dk64vr_get_game_state(&snapshot);
     assert(snapshot.player_pos[0] == 0 && snapshot.player_yaw_rad == 0);
+    present = true; mode = 3; camera = 2; fp = 0;
+    auto focus_ctx = context(); focus_ctx.f_odd = &focus_ctx.f0.u32h;
+    focus_ctx.f12.fl = 23; focus_ctx.f14.fl = 10000;
+    vr_capture_camera(rdram,&focus_ctx); invoke(vr_frame_hook);
+    dk64vr_get_game_state(&snapshot);
+    assert(snapshot.cam_at[0] == 100 && snapshot.cam_at[1] == 280 && snapshot.cam_at[2] == 300);
+    fp = 1; // first-person still publishes the true unit camera basis
     // Camera basis stays orthonormal across pitch, yaw and roll, not just the level case.
     for (float pitch : {-60.0f, 0.0f, 60.0f}) for (float yaw : {0.0f, 90.0f, 180.0f})
         for (float roll : {0.0f, 45.0f, 90.0f}) {
