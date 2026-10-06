@@ -1,4 +1,5 @@
 #include "patches.h"
+#include "vr_state.h"
 #include "transform_ids.h"
 #include "core1/core1.h"
 #include "core2/nc/camera.h"
@@ -52,6 +53,10 @@ RECOMP_PATCH void viewport_setRenderPerspectiveMatrix(Gfx **gfx, Mtx **mtx, f32 
         far = 1250.0f;
     }
     
+    if (cur_perspective_projection_transform_id == PROJECTION_GAMEPLAY_TRANSFORM_ID) {
+        vr_capture_camera(near, far);
+    }
+
     guPerspective(*mtx, &perspNorm, sViewportFOVy, sViewportAspect, near, far, 0.5f);
     gSPPerspNormalize((*gfx)++, perspNorm);
     gSPMatrix((*gfx)++, OS_PHYSICAL_TO_K0((*mtx)++), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_PROJECTION);

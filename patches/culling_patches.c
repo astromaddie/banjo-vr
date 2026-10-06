@@ -1,4 +1,5 @@
 #include "patches.h"
+#include "vr_state.h"
 #include "core1/ml.h"
 #include "core1/mlmtx.h"
 #include "core1/core1.h"
@@ -97,6 +98,9 @@ RECOMP_PATCH void func_80338DCC(Gfx ** gfx, Mtx ** mtx, void *arg2){
 RECOMP_PATCH bool viewport_isBoundingBoxInFrustum(f32 min[3], f32 max[3]) {
     // @recomp Disable frustum culling for cubes outside of demos. Demos need to maintain the original
     // culling for cubes to prevent them from behaving differently than the original game.
+    if (recomp_vr_is_active()) {
+        return TRUE;
+    }
     if (recomp_in_demo_playback_game_mode()) {
         return viewport_isBoundingBoxInFrustumCopy(min, max);
     }
@@ -107,7 +111,7 @@ RECOMP_PATCH bool viewport_isBoundingBoxInFrustum(f32 min[3], f32 max[3]) {
 // @recomp Patched to allow globally disabling frustum checks.
 RECOMP_PATCH bool viewport_func_8024DB50(f32 pos[3], f32 distance) {
     // @recomp Return true if frustum checks are disabled (always pass the frustum check).
-    if (!frustum_checks_enabled) {
+    if (recomp_vr_is_active() || !frustum_checks_enabled) {
         return TRUE;
     }
     f32 delta[3];

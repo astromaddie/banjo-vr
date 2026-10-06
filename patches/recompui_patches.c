@@ -1,6 +1,7 @@
 #include "functions.h"
 #include "patches.h"
 #include "ui_funcs.h"
+#include "vr_state.h"
 
 extern s32 D_802823AC;
 extern f32 D_80282420;
@@ -10,6 +11,7 @@ extern f32 D_80282424;
 RECOMP_PATCH void baMotor_80250C08(void) {
     // @recomp Patched to run UI callbacks.
     recomp_run_ui_callbacks();
+    vr_frame_hook();
 
     if (D_802823AC != 0) {
         D_80282424 = MIN(D_80282420, D_80282424 + time_getDelta());

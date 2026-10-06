@@ -1,4 +1,5 @@
 #include "patches.h"
+#include "vr_state.h"
 #include "transform_ids.h"
 #include "core1/core1.h"
 
@@ -63,6 +64,7 @@ RECOMP_PATCH void sky_draw(Gfx **gfx, Mtx **mtx, Vtx **vtx){
 
     viewport_setNearAndFar(5.0f, 15000.0f);
     if(gcSky.model_bins[0]){
+        vr_sky_drawn = 1;
         drawRectangle2D(gfx, 0, 0, (s32)(f32) gFramebufferWidth, (s32)(f32)gFramebufferHeight,0, 0, 0); //fill screen with black
         // @recomp Set the skybox projection matrix group.
         s32 prev_perspective_projection_transform = cur_perspective_projection_transform_id;
@@ -108,6 +110,12 @@ RECOMP_PATCH void func_80350818(Gfx **gfx, Mtx **mtx, Vtx **vtx) {
     f32 sp9C[3];
     f32 sp90[3];
     s32 sp80[4];
+
+    // Camera-relative flare quads would track the flat camera in stereo. No timers
+    // or game updates live in this draw function, so suppress only its drawing.
+    if (recomp_vr_is_active()) {
+        return;
+    }
 
     temp_s2 = D_80386170.unk0;
     if (temp_s2 != NULL) {

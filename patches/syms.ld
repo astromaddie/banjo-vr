@@ -53,3 +53,7 @@ recomp_get_first_person_inverted_axes = 0x8F0000C0;
 recomp_get_analog_cam_sensitivity = 0x8F0000C4;
 recomp_run_ui_callbacks = 0x8F0000C8;
 recomp_get_jinjo_saving_enabled = 0x8F0000CC;
+
+/* VR game-state imports; allocated after the existing Banjo host imports. */
+recomp_vr_is_active = 0x8F0000D0;
+recomp_vr_publish_game_state = 0x8F0000D4;
