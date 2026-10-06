@@ -29,11 +29,24 @@ static s32 vr_turn_allowed(s32 camera_type) {
     s32 present = player_is_present();
     s32 scene = vr_scene_classify(getGameMode(), map_get(), level_get(), camera_type,
         ncFirstPersonCamera_getState(), present ? bs_getState() : 0, gctransition_active());
-    return camera_type == CAMERA_TYPE_2_DYNAMIC && !bakey_held(BUTTON_R)
-        && !bainput_should_rotate_camera_left() && !bainput_should_rotate_camera_right()
+    s32 movement = present ? player_movementGroup() : 0;
+    s32 buttons = bakey_held(BUTTON_R) | (bainput_should_rotate_camera_left() << 1)
+        | (bainput_should_rotate_camera_right() << 2);
+    s32 allowed = camera_type == CAMERA_TYPE_2_DYNAMIC && buttons == 0
         && vr_turn_camera_allowed(scene, present,
-        cameraUpdateEnabled, ncDynamicCamera_getState(), D_8037C062,
-        present ? player_movementGroup() : 0, map_get());
+        cameraUpdateEnabled, ncDynamicCamera_getState(), D_8037C062, movement, map_get());
+    // Log the inputs to the decision whenever they change (VR only; diagnoses rejected turns).
+    static s32 last_key = -1;
+    s32 key = (allowed << 30) ^ (camera_type << 24) ^ (scene << 20) ^ (present << 19)
+        ^ (cameraUpdateEnabled << 18) ^ (ncDynamicCamera_getState() << 12) ^ (D_8037C062 << 6)
+        ^ (movement << 3) ^ buttons;
+    if (key != last_key) {
+        last_key = key;
+        recomp_printf("[vr-turn] %s: camera type %d scene %d present %d update %d dynamic state 0x%X mode %d movement %d map 0x%X buttons %d\n",
+            allowed ? "allowed" : "rejected", camera_type, scene, present, cameraUpdateEnabled,
+            ncDynamicCamera_getState(), D_8037C062, movement, map_get(), buttons);
+    }
+    return allowed;
 }
 
 s32 vr_comfort_camera_active(void) {
