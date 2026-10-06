@@ -77,6 +77,7 @@ step_vrtest() {
 	"$build/vrtest/dk64vr_tests"
 	"$build/vrtest/banjo_profile_tests"
 	"$build/vrtest/comfort_turn_tests"
+	"$build/vrtest/rt64_vr_eye_slots_test"
 	bash tools/steam_frame/test-vr-diag.sh "$build/vrtest"
 }
 
