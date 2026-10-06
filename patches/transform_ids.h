@@ -120,6 +120,12 @@ typedef struct {
 // Pillarbox Rectangles: 0x31000000 - 0x31000010
 #define PILLARBOX_RECTANGLE_TRANSFORM_ID_START 0x31000000
 
+// VR camera-facing billboards (only while VR is active): a flag above every id here (all below
+// 0x40000000) on a billboard's matrix group, so the renderer turns it to the viewer
+// (src/vr/game/banjo_profile_ext.c). Interpolation still pairs the same flagged id between frames.
+#define VR_BILLBOARD_CYLINDRICAL_ID_FLAG 0x40000000
+#define VR_BILLBOARD_SPHERICAL_ID_FLAG   0x80000000
+
 // Markers: 0x10000000 - 0x1FFFFFFF
 #define BANJO_TRANSFORM_ID_START 0x10000000
 #define MARKER_TRANSFORM_ID_START (BANJO_TRANSFORM_ID_START + MARKER_TRANSFORM_ID_COUNT)

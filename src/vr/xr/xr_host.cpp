@@ -617,7 +617,31 @@ public:
         return (ext != nullptr) && (ext->perspective_hud_after_camera != 0);
     }
 
+    uint32_t billboardGroups(const RT64::VrBillboardGroup **groups) const override {
+        if (billboardGroupList.empty() || (setting("billboard_facing") == 0.0)) {
+            return 0;
+        }
+
+        *groups = billboardGroupList.data();
+        return uint32_t(billboardGroupList.size());
+    }
+
+    bool billboardViewpoint(uint32_t eye, float point[3]) override {
+        (void)eye;
+        if (!billboardPointValid) {
+            return false;
+        }
+
+        point[0] = billboardPoint.x;
+        point[1] = billboardPoint.y;
+        point[2] = billboardPoint.z;
+        return true;
+    }
+
     void eyeCamera(uint32_t eye, const float view[16], const float proj[16], float outView[16], float outProj[16]) override {
+        // The cinema leaves billboards facing the game camera (its views are the game camera's).
+        billboardPointValid = false;
+
         // RT64_VR_SAME_EYE=1: both eyes get the left eye's camera (diagnostics: equal images).
         static const bool sameEye = envFlag("RT64_VR_SAME_EYE", false);
         if (sameEye) {
@@ -698,6 +722,12 @@ public:
         }
 
         fromMat4(eyeView(gameView, eyeInHead[eye], float(setting("world_scale"))), outView);
+        // Billboards face the point between the eyes, from this same view (vr_game_profile_ext.h).
+        if (!billboardGroupList.empty()) {
+            billboardPoint = dk64vr::billboardViewpoint(gameView, eyeInHead[0], eyeInHead[1], float(setting("world_scale")));
+            billboardPointValid = true;
+        }
+
         const float nearUnits = float(setting("eye_near_m") * setting("world_scale"));
         const Mat4 projection = eyeProjection(eyeFov[eye], gameProj, nearUnits);
         fromMat4(projection, outProj);
@@ -1348,6 +1378,22 @@ private:
         logCameraSettings();
         diagYawDeg = float(setting("diag_yaw"));
         nextDumpFrame = uint64_t(setting("dump_frame"));
+
+        billboardGroupList.clear();
+        const vr_game_profile_ext *ext = vr_game_profile_ext_get();
+        if ((ext != nullptr) && (ext->billboard_groups != nullptr)) {
+            for (int i = 0; i < ext->billboard_group_count; i++) {
+                const vr_billboard_group &g = ext->billboard_groups[i];
+                RT64::VrBillboardGroup group;
+                group.firstId = g.first_id;
+                group.lastId = g.last_id;
+                group.mode = (g.mode == VR_BILLBOARD_SPHERICAL) ? RT64::VrBillboardMode::Spherical :
+                    (g.mode == VR_BILLBOARD_MATCHING) ? RT64::VrBillboardMode::Matching : RT64::VrBillboardMode::Cylindrical;
+                billboardGroupList.push_back(group);
+                dk64vr_logf("billboards: groups %08X-%08X %s, billboard_facing %d", g.first_id, g.last_id,
+                    (g.mode == VR_BILLBOARD_SPHERICAL) ? "spherical" : (g.mode == VR_BILLBOARD_MATCHING) ? "matching" : "cylindrical", int(setting("billboard_facing")));
+            }
+        }
     }
 
     // ----------------------------------------------------------------------------------------
@@ -3335,6 +3381,10 @@ private:
     Pose origin;
     bool recentrePending = true;
     Pose eyeInHead[2];
+    // Camera-facing billboards from the game profile, and the point they face in this eye pass.
+    std::vector<RT64::VrBillboardGroup> billboardGroupList;
+    Vec3 billboardPoint;
+    bool billboardPointValid = false;
     Pose eyeSubmitPose[2];
     FovTangents eyeFov[2];
     XrFovf eyeXrFov[2] = {};

@@ -2,6 +2,7 @@
 #include "vr_state.h"
 #include "functions.h"
 #include "core1/core1.h"
+#include "transform_ids.h"
 
 extern struct {
     void (*unk0)(ActorMarker *);
@@ -13,7 +14,39 @@ extern u8 D_803858B0;
 void func_80344124(void);
 void func_80349AD0(void);
 
-// Copies of the native sprite paths; only the VR distance calculation differs.
+u32 vr_model_billboard_flag = 0;
+
+u32 vr_billboard_group_id(u32 id, u32 flag) {
+    if ((id == G_EX_ID_IGNORE) || (id == G_EX_ID_AUTO) || !recomp_vr_is_active()) {
+        return id;
+    }
+
+    return id | flag;
+}
+
+// VR: a sprite's own matrix group with a billboard flag on the id of the prop or actor drawing it
+// (the prop's or marker's transform id), with the prop sprites' interpolation. FALSE (nothing
+// pushed) off VR or without an id.
+static bool vr_push_sprite_billboard_group(Gfx **gfx, u32 flag) {
+    if ((cur_drawn_model_transform_id == 0) || !recomp_vr_is_active()) {
+        return FALSE;
+    }
+
+    u32 id = vr_billboard_group_id(cur_drawn_model_transform_id, flag);
+    if (perspective_interpolation_skipped()) {
+        gEXMatrixGroupSkipAll((*gfx)++, id, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
+    }
+    else {
+        gEXMatrixGroupDecomposed((*gfx)++, id, G_EX_PUSH, G_MTX_MODELVIEW,
+            G_EX_COMPONENT_INTERPOLATE, G_EX_COMPONENT_INTERPOLATE, G_EX_COMPONENT_SKIP, G_EX_COMPONENT_INTERPOLATE,
+            G_EX_COMPONENT_INTERPOLATE, G_EX_COMPONENT_SKIP, G_EX_COMPONENT_INTERPOLATE,
+            G_EX_ORDER_LINEAR, G_EX_EDIT_NONE, G_EX_COMPONENT_SKIP, G_EX_COMPONENT_AUTO);
+    }
+    return TRUE;
+}
+
+// Copies of the native sprite paths; only the VR distance calculation and the VR billboard tag
+// differ.
 RECOMP_PATCH void func_80344138(BKSpriteDisplayData *self, s32 frame, s32 mirrored, f32 position[3], f32 scale[3], Gfx **gfx, Mtx **mtx) {
     f32 sp6C[3];
     f32 sp60[3];
@@ -67,11 +100,16 @@ RECOMP_PATCH void func_80344138(BKSpriteDisplayData *self, s32 frame, s32 mirror
         mlMtxScale_xyz((mirrored) ? -scale[0] : scale[0], sp38, sp34);
     }
     mlMtxApply(*mtx);
+    // VR: prop and actor sprites (notes, flowers, eggs) are upright billboards.
+    bool billboard_group = vr_push_sprite_billboard_group(gfx, VR_BILLBOARD_CYLINDRICAL_ID_FLAG);
     gSPMatrix((*gfx)++, (*mtx)++, G_MTX_PUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
     temp_a3 = (BKSpriteFrameDisplayData *)((s32)self + sizeof(BKSpriteDisplayData) + frame*sizeof(BKSpriteFrameDisplayData));
     gSPSegment((*gfx)++, 1, osVirtualToPhysical(temp_a3->vtx));
     gSPDisplayList((*gfx)++, temp_a3->gfx);
     gSPPopMatrix((*gfx)++, G_MTX_MODELVIEW);
+    if (billboard_group) {
+        gEXPopMatrixGroup((*gfx)++, G_MTX_MODELVIEW);
+    }
     func_80349AD0();
     func_80344124();
 }
@@ -189,4 +227,59 @@ RECOMP_PATCH void func_80344720(BKSpriteDisplayData *arg0, s32 frame, bool mirro
     gSPPopMatrix((*gfx)++, G_MTX_MODELVIEW);
     func_80349AD0();
     func_80344124();
+}
+
+extern f32 D_8036E58C[3];
+BKSpriteDisplayData *func_80330F30(ActorMarker *marker);
+void func_803257A4(ActorMarker *marker);
+void func_80344C38(void (*arg0)(ActorMarker *), ActorMarker *arg1);
+s32 func_80344C20(BKSpriteDisplayData *arg0);
+void func_80335D30(Gfx **gfx);
+void func_8033687C(Gfx **gfx);
+void func_80338338(s32 r, s32 g, s32 b);
+void func_803382FC(s32 alpha);
+void func_803382E4(s32 arg0);
+
+// Copy of the camera-facing actor sprite draw (rotation = the camera's, plus the actor's roll):
+// Grunty's spells. VR: a spherical billboard.
+RECOMP_PATCH Actor *func_80325CAC(ActorMarker *marker, Gfx **gfx, Mtx **mtx, Vtx **vtx) {
+    f32 scale[3];
+    f32 rotation[3];
+    Actor *this;
+    BKSpriteDisplayData *sp40;
+
+    this = marker_getActor(marker);
+    sp40 = func_80330F30(marker);
+    scale[0] = scale[1] = scale[2] = this->scale;
+    if (this->unk104 != NULL) {
+        this->position[0] -= D_8036E58C[0];
+        this->position[1] -= D_8036E58C[1];
+        this->position[2] -= D_8036E58C[2];
+    }
+    viewport_getRotation_vec3f(rotation);
+    rotation[2] += this->roll;
+    func_80338338(0xFF, 0xFF, 0xFF);
+    if (this->unk124_11 != 0) {
+        func_803382FC(this->alpha_124_19);
+        func_803382E4(0xC);
+    } else if ((func_80344C20(sp40) & 0xB00) != 0) {
+        func_803382E4(0xB);
+    } else {
+        func_803382E4(0xE);
+    }
+    func_80344C38(&func_803257A4, marker);
+    func_80335D30(gfx);
+    bool billboard_group = vr_push_sprite_billboard_group(gfx, VR_BILLBOARD_SPHERICAL_ID_FLAG);
+    func_80344720(sp40, marker->propPtr->unk8_15, marker->propPtr->unk8_5, this->position, rotation, scale, gfx, mtx);
+    if (billboard_group) {
+        gEXPopMatrixGroup((*gfx)++, G_MTX_MODELVIEW);
+    }
+
+    func_8033687C(gfx);
+    if (this->unk104 != NULL) {
+        this->position[0] = this->position[0] + D_8036E58C[0];
+        this->position[1] = this->position[1] + D_8036E58C[1];
+        this->position[2] = this->position[2] + D_8036E58C[2];
+    }
+    return this;
 }

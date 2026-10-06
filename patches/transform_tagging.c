@@ -1,5 +1,6 @@
 #include "patches.h"
 #include "transform_ids.h"
+#include "vr_state.h"
 #include "bk_api.h"
 #include "core1/core1.h"
 #include "core1/vimgr.h"
@@ -206,6 +207,11 @@ bool set_model_matrix_group(Gfx **gfx, void *geo_list, bool skip_rotation) {
         else {
             // Other models use a group ID determined by the transform ID offset.
             group_id = cur_drawn_model_transform_id + cur_model_transform_id_offset;
+        }
+
+        // VR: inside a billboard geo node (func_803384A8), tag the group as a billboard.
+        if (vr_model_billboard_flag != 0) {
+            group_id = vr_billboard_group_id(group_id, vr_model_billboard_flag);
         }
 
         if (skip_all_interpolation || cur_drawn_model_skip_interpolation) {
@@ -422,6 +428,14 @@ RECOMP_PATCH void func_803384A8(Gfx **gfx, Mtx **mtx, void *arg2){
         mlMtxTranslate(-cmd->unkC[0], -cmd->unkC[1], -cmd->unkC[2]);
         mlMtxApply(*mtx);
 
+        // VR: the node and its display lists are billboards the renderer turns to the viewer,
+        // upright (yaw only) or completely as the node says, about the centre of their vertices
+        // (a map's nodes pivot far from the map origin).
+        u32 prev_billboard_flag = vr_model_billboard_flag;
+        if (recomp_vr_is_active()) {
+            vr_model_billboard_flag = cmd->unkA ? VR_BILLBOARD_CYLINDRICAL_ID_FLAG : VR_BILLBOARD_SPHERICAL_ID_FLAG;
+        }
+
         // @recomp Create a matrix group for the billboarded matrix. Skip rotation interpolation if the perspective projection skipped interpolation.
         bool pushed_matrix_group = set_model_matrix_group(gfx, arg2, perspective_interpolation_skipped());
 
@@ -429,6 +443,7 @@ RECOMP_PATCH void func_803384A8(Gfx **gfx, Mtx **mtx, void *arg2){
         func_80339124(gfx, mtx, (BKGeoList*)((s32)cmd + cmd->unk8));
         mlMtxPop();
         gSPPopMatrix((*gfx)++, G_MTX_MODELVIEW);
+        vr_model_billboard_flag = prev_billboard_flag;
 
         // @recomp Pop the matrix group if one was pushed.
         if (pushed_matrix_group) {

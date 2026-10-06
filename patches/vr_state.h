@@ -38,6 +38,11 @@ DECLARE_FUNC(void, recomp_vr_publish_game_state, const VrGameState*);
 #ifdef MIPS
 void vr_frame_hook(void);
 void vr_capture_camera(f32 near, f32 far);
+// id with a VR_BILLBOARD_*_ID_FLAG while VR is active (transform_ids.h); id itself otherwise and
+// for the reserved ids 0 and G_EX_ID_AUTO.
+u32 vr_billboard_group_id(u32 id, u32 flag);
+// Set while a model's billboard geo node is drawn in VR: set_model_matrix_group adds it to the ids.
+extern u32 vr_model_billboard_flag;
 extern s32 vr_sky_drawn;
 #endif
 #endif

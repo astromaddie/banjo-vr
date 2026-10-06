@@ -1,5 +1,6 @@
 #include "patches.h"
 #include "transform_ids.h"
+#include "vr_state.h"
 #include "functions.h"
 #include "rand.h"
 #include "core1/ml.h"
@@ -133,6 +134,11 @@ RECOMP_PATCH void __particleEmitter_drawOnPass(ParticleEmitter *this, Gfx **gfx,
             func_80344C2C(this->unk0_16);
             // @recomp Get the particle's ID and use it to set a matrix group for this particle.
             u32 transform_id = NORMAL_PARTICLE_TRANSFORM_ID_START + get_particle_id(iPtr);
+            // VR: camera-facing particles (smoke, sparkles) face the viewer completely; rotatable
+            // ones keep their authored orientation.
+            if (!(this->draw_mode & PART_EMIT_ROTATABLE)) {
+                transform_id = vr_billboard_group_id(transform_id, VR_BILLBOARD_SPHERICAL_ID_FLAG);
+            }
             gEXMatrixGroupDecomposedNormal((*gfx)++, transform_id, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
 
             if(this->draw_mode & PART_EMIT_ROTATABLE){
@@ -326,6 +332,10 @@ RECOMP_PATCH void func_8033F7F0(u8 indx, Gfx **gfx, Mtx **mtx, Vtx **vtx){
 
         // @recomp Set a matrix group before drawing the sprite. Skip interpolation if it was just freed.
         u32 projectileID = PROJECTILE_TRANSFORM_ID_START + indx;
+        // VR: camera-facing projectiles (smoke puffs, with their own roll) face the viewer completely.
+        if (sp54->unk28_12) {
+            projectileID = vr_billboard_group_id(projectileID, VR_BILLBOARD_SPHERICAL_ID_FLAG);
+        }
         if (projectileSkipFlags[indx] & PROJECTILE_RESET_FLAG) {
             gEXMatrixGroupSkipAll((*gfx)++, projectileID, G_EX_PUSH, G_MTX_MODELVIEW, G_EX_EDIT_NONE);
 

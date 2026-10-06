@@ -66,6 +66,7 @@ libatomic bundled, libstdc++ static; the ABI check passes the glibc 2.35 floor.
     host asks (`VrHost::perspectiveHudAfterCamera`, rt64 947a2a0). They are never given the eye
     camera (the eye camera only replaces projections in the camera groups). Unattended dump:
     Grunty's 3D portrait and dialogue box in the HUD image, absent from the eyes.
+  - `billboard_groups`: camera-facing billboards (section 4a).
   - `takes_comfort_turn` = 0. Banjo has no camera-heading patch for `dk64vr_take_turn`, so the
     right stick defaults to the game's own C-left/C-right camera swing (`right_stick_x` =
     camera). Setting it back to "Comfort turn" in the VR menu would show a snap that unwinds
@@ -88,6 +89,39 @@ libatomic bundled, libstdc++ static; the ABI check passes the glibc 2.35 floor.
   game lets you skip only when a save file exists, `cutscene_skipIntroCutsceneCheck`).
 - **Naming**: `BK_VR_<KEY>` environment overrides, OpenXR application name `BanjoVR`, action set
   "Banjo-Kazooie", logs `[vr]`, `[vr-perf]`, `[openxr]` as in DK64, `[vr-scene]` from the game side.
+
+### 4a. Billboards face the viewer
+
+Banjo builds its sprites from the flat camera's rotation (`sViewportMatrix`, yaw and pitch), so in
+the headset they face the game camera and turn edge-on away from the centre of its view. In VR the
+patches add a flag to the matrix group id of each camera-facing draw (`patches/transform_ids.h`;
+every plain id is below `0x40000000`, interpolation pairs the flagged id as before):
+
+| Draw | Where | Flag | Facing |
+| --- | --- | --- | --- |
+| Prop and actor sprites (notes, flowers, eggs, extra lives, the statue on Spiral Mountain's cliff) | `func_80344138` (`vr_sprite.c`), with the prop's or marker's transform id | `0x40000000` | cylindrical: upright, turns about the vertical only |
+| Model billboard nodes, yaw only (palm trees, fire sparkles, Mumbo's skull candles, half the Christmas tree's lights) | `func_803384A8` (`transform_tagging.c`) via `set_model_matrix_group` | `0x40000000` | cylindrical |
+| Model billboard nodes with pitch (twinklies, the other Christmas tree lights) | same | `0x80000000` | spherical |
+| Camera-facing particles (smoke, sparkles; not `PART_EMIT_ROTATABLE`) | `__particleEmitter_drawOnPass` | `0x80000000` | spherical, own roll kept |
+| Camera-facing projectiles (smoke puffs) | `func_8033F7F0` when `unk28_12` | `0x80000000` | spherical |
+| Grunty's spells | `func_80325CAC` (`vr_sprite.c`) | `0x80000000` | spherical |
+
+Authored-rotation sprites (`func_80344720` from rotatable particles and `func_80325AE0`), ground
+decals and the HUD keep their orientation. The profile extension names the two flagged ranges;
+RT64 (`rt64_vr_billboard.h`, `TransformProcessor::faceBillboards`) rebuilds those model matrices
+in each eye pass after interpolation: it recovers the game's camera basis from the matrix (local
+Z, level X), keeps what the game added to it (roll, scale, mirroring), and replaces the basis with
+one facing the viewpoint. The viewpoint is the point midway between the eyes from the same view
+as the eye cameras (`billboardViewpoint`), so both eyes see one flat card (per-eye facing would
+turn it ~2 degrees apart at 1 m and break the stereo of its edges) and a pure head turn does not
+move it. A billboard turns about its matrix origin, or about the centre of its vertices when the
+origin lies outside them (map billboard nodes pivot in map coordinates). The cinema keeps the
+game's facing. Setting `billboard_facing` (default 1) turns it off; `RT64_VR_LOG_BILLBOARDS=300`
+logs the turned billboards and any untagged matrix that faces the game camera.
+
+Why upright for sprites: they stand for upright things, and the eye is often above or below them
+(the third-person camera, a lean); a fully facing card tilts back and leaves the ground. Particles
+and effects are volumetric puffs, so they face the viewer completely.
 
 ## 5. Frame protocol, eye camera, HUD, cinema, menus
 
@@ -115,7 +149,7 @@ and dumps; it never pressed a real button and nobody wore it.
 | Pause (game thread waits in the state publish) | verified unattended through the VR settings menu (game 0.0 Hz while open, resumes on close); standby/focus pause not exercised (runs force rendering) |
 | VR settings menu (quick menu, full panel, all tabs) | verified unattended (`diag_vr_menu_at` tour over the frozen cinema; "Banjo 1.4 m", right stick "Game camera"); real input headset-unverified |
 | Recomp menus on the panel, pointer | built (shared code); not exercised on Banjo |
-| Billboard sprites facing the eye, not the game camera | not started (game side lists it as renderer work) |
+| Billboard sprites facing the eye, not the game camera | verified unattended (section 4a; host tests; Spiral Mountain: the cliff statue sprite upright and facing the eyes, the only billboard in that view; particles not seen on the device) |
 | Comfort turn | off by default (no camera patch); game camera swing on the right stick |
 | Worn | never |
 
