@@ -16,6 +16,7 @@
 #include "dk64vr_math.h"
 #include "dk64vr_sched.h"
 #include "dk64vr_settings.h"
+#include "vr_game_profile_ext.h"
 #include "dk64vr_log.h"
 #include "shared/rt64_projection_fog.h"
 #include "dk64vr_menu.h"
@@ -335,11 +336,11 @@ static void testEyeNearSettings() {
     CHECK(text != nullptr);
     if (text) CHECK(dk64vr_settings_parse(&saved, text, length) == 0);
     CHECK_NEAR(saved.file_values[index], 0.12, 1e-6);
-    CHECK_NEAR(saved.file_values[dk64vr_settings_index("port_schema")], 5, 0);
+    CHECK_NEAR(saved.file_values[dk64vr_settings_index("port_schema")], 6, 0);
     std::free(text);
     dk64vr_settings_set(&s, "eye_near_m", -1); CHECK_NEAR(dk64vr_settings_get(&s, "eye_near_m"), 0, 0);
     dk64vr_settings_set(&s, "eye_near_m", 99); CHECK_NEAR(dk64vr_settings_get(&s, "eye_near_m"), 0.25, 0);
-    const char *fallback = "version=1\n[vr]\nport_schema=5\neye_near_m=0\nworld_scale=4\ncamera_closer=0.8\n";
+    const char *fallback = "version=1\n[vr]\nport_schema=6\neye_near_m=0\nworld_scale=4\ncamera_closer=0.8\n";
     // This sparse A/B config adds every missing registry key, without changing its four choices.
     CHECK(dk64vr_settings_parse(&saved, fallback, std::strlen(fallback)) == int(dk64vr_settings_count()) - 4);
     CHECK_NEAR(saved.file_values[index], 0, 0);
@@ -522,7 +523,7 @@ static void testSettings() {
     CHECK_NEAR(dk64vr_settings_get(&s, "refresh_rate"), 72.0, 0.0);
     CHECK_NEAR(dk64vr_settings_get(&s, "resolution_scale"), DK64VR_RESOLUTION_AUTO, 0.0);
     CHECK_NEAR(dk64vr_settings_get(&s, "camera_smoothing"), 2.0, 0.0);
-    CHECK_NEAR(dk64vr_settings_get(&s, "port_schema"), 5.0, 0.0);
+    CHECK_NEAR(dk64vr_settings_get(&s, "port_schema"), 6.0, 0.0);
     CHECK_NEAR(dk64vr_settings_get(&s, "world_scale"), 15.0, 0.0);
     CHECK_NEAR(dk64vr_settings_get(&s, "hud_distance"), 1.5, 1e-9);
     CHECK_NEAR(dk64vr_settings_get(&s, "turn_mode"), 0.0, 0.0);
@@ -594,7 +595,7 @@ static void testSettings() {
     CHECK_NEAR(s.file_values[dk64vr_settings_index("world_scale")], 15.0, 0.0);
     CHECK_NEAR(s.file_values[dk64vr_settings_index("resolution_scale")], DK64VR_RESOLUTION_AUTO, 0.0);
     CHECK_NEAR(s.file_values[dk64vr_settings_index("refresh_rate")], 90.0, 0.0);
-    CHECK_NEAR(s.file_values[dk64vr_settings_index("port_schema")], 5.0, 0.0);
+    CHECK_NEAR(s.file_values[dk64vr_settings_index("port_schema")], 6.0, 0.0);
     // A schema-3 file still at the old default 1.0 moves on to auto; one the user set to 0.75 stays.
     const char *schema3 =
         "version = 1\n"
@@ -612,7 +613,7 @@ static void testSettings() {
         "resolution_scale = 1.25\n";
     CHECK(dk64vr_settings_parse(&s, schema4Old, std::strlen(schema4Old)) > 0);
     CHECK_NEAR(s.file_values[dk64vr_settings_index("resolution_scale")], DK64VR_RESOLUTION_AUTO, 0.0);
-    CHECK_NEAR(s.file_values[dk64vr_settings_index("port_schema")], 5.0, 0.0);
+    CHECK_NEAR(s.file_values[dk64vr_settings_index("port_schema")], 6.0, 0.0);
     const char *schema4Chosen =
         "version = 1\n"
         "[vr]\n"
@@ -711,11 +712,19 @@ static void testSettings() {
     // Enum keys by name.
     const char *names =
         "[vr]\n"
+        "port_schema = 6\n"
         "right_stick_x = camera\n"
         "cutscenes = panel\n";
     dk64vr_settings_parse(&s, names, std::strlen(names));
     CHECK_NEAR(s.file_values[dk64vr_settings_index("right_stick_x")], 1.0, 0.0);
     CHECK_NEAR(s.file_values[dk64vr_settings_index("cutscenes")], 2.0, 0.0);
+    // Schema 6: the old "camera" default written before the game took comfort turns moves to
+    // the comfort turn when the profile takes it; a schema-6 file keeps the user's "camera".
+    const vr_game_profile_ext *turnExt = vr_game_profile_ext_get();
+    const char *oldDefault = "[vr]\nport_schema = 5\nright_stick_x = camera\n";
+    dk64vr_settings_parse(&s, oldDefault, std::strlen(oldDefault));
+    CHECK_NEAR(s.file_values[dk64vr_settings_index("right_stick_x")], (turnExt && turnExt->takes_comfort_turn) ? 0.0 : 1.0, 0.0);
+    CHECK_NEAR(s.file_values[dk64vr_settings_index("port_schema")], 6.0, 0.0);
     dk64vr_settings_free(&s);
     dk64vr_log_set_sink(nullptr);
 }
@@ -780,7 +789,7 @@ static void testFoveation() {
     dk64vr_settings_t roundTrip = {};
     dk64vr_settings_defaults(&roundTrip);
     CHECK(dk64vr_settings_parse(&roundTrip, formatted, length) == 0);
-    CHECK_NEAR(roundTrip.file_values[dk64vr_settings_index("port_schema")], 5, 0);  // migrated; 0.75 kept
+    CHECK_NEAR(roundTrip.file_values[dk64vr_settings_index("port_schema")], 6, 0);  // migrated; 0.75 kept
     CHECK_NEAR(roundTrip.file_values[dk64vr_settings_index("resolution_scale")], 0.75, 1e-9);
     CHECK_NEAR(roundTrip.file_values[dk64vr_settings_index("dump_foveation")], 1, 0);
     CHECK_NEAR(roundTrip.file_values[dk64vr_settings_index("foveation_eye_tracked")], 1, 0);
@@ -1732,7 +1741,7 @@ static void testCameraOriginSettings() {
     dk64vr_settings_parse(&s, text, strlen(text));
     for (size_t i = 0; i < dk64vr_settings_count(); i++) s.values[i] = s.file_values[i];
     CHECK_NEAR(dk64vr_settings_dk_height(&s), 3.15, 1e-9);
-    CHECK_NEAR(dk64vr_settings_get(&s, "port_schema"), 5, 0); // additive keys: no default migration
+    CHECK_NEAR(dk64vr_settings_get(&s, "port_schema"), 6, 0); // additive keys: no default migration
     size_t length;
     char *formatted = dk64vr_settings_format(&s, &length);
     CHECK(formatted != nullptr);

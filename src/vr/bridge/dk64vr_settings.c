@@ -40,7 +40,7 @@ static sfvr_setting_key port_keys[] = {
 	// the runtime recommends), foveation off -> high, foveation_eye_tracked false -> true and
 	// snap_angle 30 -> 45, and
 	// added camera_smoothing.
-	{ "port_schema", SFVR_SETTING_INT, 5.0, 0.0, 100.0, NULL },
+	{ "port_schema", SFVR_SETTING_INT, 6.0, 0.0, 100.0, NULL },
 	// The game camera is the head origin, so its 30 Hz steps and sudden swings are felt directly.
 	// off: RT64's linear interpolation between game frames. low: a quadratic B-spline through the
 	// last three game frames (half a game frame later; velocity continuous). medium and high add
@@ -577,7 +577,7 @@ int dk64vr_settings_parse(dk64vr_settings_t *s, const char *text, size_t len) {
 	// Port schema migration (lesson 79): a file written before schema 2 that still holds an old
 	// default takes the new one; a value the user chose stays.
 	int schema_index = dk64vr_settings_index("port_schema");
-	if (len > 0 && schema_index >= 0 && (!p.seen[schema_index] || s->file_values[schema_index] < 5.0)) {
+	if (len > 0 && schema_index >= 0 && (!p.seen[schema_index] || s->file_values[schema_index] < 6.0)) {
 		const double from_schema = p.seen[schema_index] ? s->file_values[schema_index] : 1.0;
 		static const struct { const char *name; double from; double to; double schema; } moved[] = {
 			{ "world_scale", 25.0, 15.0, 2.0 },
@@ -603,7 +603,15 @@ int dk64vr_settings_parse(dk64vr_settings_t *s, const char *text, size_t len) {
 				}
 			}
 		}
-		s->file_values[schema_index] = 5.0;
+		// Schema 6: before the game took comfort turns, right_stick_x defaulted to the game's own
+		// camera and was written to the file as "camera"; that old default now turns comfortably.
+		const vr_game_profile_ext *ext = vr_game_profile_ext_get();
+		const int rsx = dk64vr_settings_index("right_stick_x");
+		if (ext && ext->takes_comfort_turn && rsx >= 0 && p.seen[rsx] && from_schema < 6.0 && s->file_values[rsx] == 1.0) {
+			s->file_values[rsx] = 0.0;
+			dk64vr_logf("settings: right_stick_x camera -> turn (the game now takes comfort turns)");
+		}
+		s->file_values[schema_index] = 6.0;
 		p.repairs++;
 	}
 	if (s->file_version < SFVR_SETTINGS_SCHEMA) {
