@@ -10,6 +10,7 @@
 #include <array>
 #include "selected.h"
 #include "test_symbols.h"
+#include "../include/dk64vr_control.h"
 #include "../include/dk64vr_game_state.h"
 
 static gpr addr(uint32_t a) { return static_cast<int32_t>(a); }
@@ -18,7 +19,7 @@ static float &f(uint8_t *rdram, uint32_t a) {
 }
 static int mode = 3, map = 1, level = 11, camera = 2, fp = 0, action = 1, transition = 0;
 static bool present = true, demo = false;
-static int logs = 0, models = 0;
+static int logs = 0, models = 0, saves = 0;
 static std::array<float, 3> eye{0, 0, 0}, rot{0, 0, 0}, look{0, 0, -1};
 static std::vector<int32_t> trace;
 static void vec(uint8_t *rdram, gpr dest, const std::array<float, 3> &v) {
@@ -32,6 +33,9 @@ RETINT(bs_getState, action) RETINT(gctransition_active, transition)
 RETINT(player_is_present, present) RETINT(recomp_in_demo_playback_game_mode, demo)
 RETINT(mapSpecificFlags_validateCRC1, 1) RETINT(viewport_getMatrix, addr(0x80013000))
 RETINT(perspective_interpolation_skipped, 0)
+RETINT(gameSelect_getGameNumber, 0)
+STUB(gameSelect_saveAndExit) { (void)rdram; (void)ctx; ++saves; }
+STUB(time_getDelta) { (void)rdram; ctx->f0.fl = 1.0f; }
 STUB(recomp_printf) { (void)rdram; (void)ctx; ++logs; }
 STUB(sinf_recomp) { (void)rdram; ctx->f0.fl = std::sin(ctx->f12.fl); }
 STUB(__cosf_recomp) { (void)rdram; ctx->f0.fl = std::cos(ctx->f12.fl); }
@@ -242,5 +246,21 @@ int main() {
     // Flare gate: real populated flare state must be untouched and no models emitted.
     MEM_W(4,addr(K_D_80386170)) = 0x80014000; MEM_B(0,addr(K_D_8038617C)) = 1;
     models = 0; invoke(func_80350818); assert(models == 0);
+    // The new frame-hook callee is actual generated code too. Ordinary flat/VR runs never
+    // save; the enabled diagnostic needs four uninterrupted seconds and saves only once.
+    assert(saves == 0);
+    dk64vr_set_diag_save_in_play(1);
+    auto save_tick = [&](int scene) {
+        auto save_ctx = context(); save_ctx.r4 = scene; save_ctx.f_odd = &save_ctx.f0.u32h;
+        vr_diag_save_tick(rdram, &save_ctx);
+    };
+    save_tick(DK64VR_SCENE_GAMEPLAY); save_tick(DK64VR_SCENE_GAMEPLAY);
+    save_tick(DK64VR_SCENE_PAUSE); // resets uninterrupted play
+    for (int i = 0; i < 3; ++i) save_tick(DK64VR_SCENE_GAMEPLAY);
+    assert(saves == 0);
+    save_tick(DK64VR_SCENE_GAMEPLAY); assert(saves == 1);
+    for (int i = 0; i < 4; ++i) save_tick(DK64VR_SCENE_GAMEPLAY);
+    assert(saves == 1);
+    dk64vr_set_diag_save_in_play(0);
     std::cout << "generated gates, original-ROM flat parity and camera/frame snapshots passed\n";
 }
