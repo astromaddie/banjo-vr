@@ -153,6 +153,8 @@ set (SOURCES
 
     ${CMAKE_SOURCE_DIR}/src/game/config.cpp
     ${CMAKE_SOURCE_DIR}/src/game/debug.cpp
+    ${CMAKE_SOURCE_DIR}/src/game/vr_api.cpp
+    ${CMAKE_SOURCE_DIR}/src/vr/game/banjo_profile.c
     ${CMAKE_SOURCE_DIR}/src/game/recomp_api.cpp
     ${CMAKE_SOURCE_DIR}/src/game/recomp_extension_api.cpp
     ${CMAKE_SOURCE_DIR}/src/game/recomp_data_api.cpp
