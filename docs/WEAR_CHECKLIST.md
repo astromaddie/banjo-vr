@@ -5,6 +5,10 @@ the logs. No real controller press has reached the game yet.
 
 **Before you put it on**
 
+- Build: `steam-frame` b4f1468 (docs ec352b8), installed as the `BanjoVR` devkit title (shortcut
+  appid 2393272997, binary md5 `1d448b6e00c6d25066e7b7197b7482f2`), nothing armed, no `vr.toml`
+  yet (defaults: Banjo 1.38 m, foveation high, camera smoothing medium).
+
 - SteamVR per-app settings for **BanjoVR** (in the headset): refresh **120 Hz**, resolution
   **2160** (the same as DK64VR). Without them it runs at 72 Hz.
 - Launch **BanjoVR** from the Steam library in the headset (not over SSH: no controllers then).
