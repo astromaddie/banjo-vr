@@ -43,6 +43,15 @@ endif()
 
 set(RT64_STATIC TRUE)
 set(RT64_SDL_WINDOW_VULKAN TRUE)
+
+# The Steam Frame VR layer (docs/VR_ARCHITECTURE.md): OpenXR through RT64's VR host interface and
+# plume's Vulkan create hooks. Off, the build is the flat game, unchanged.
+option(BK_VR "Build the OpenXR VR renderer (Linux)" OFF)
+if (BK_VR)
+    set(RT64_VR ON)
+    add_compile_definitions(RT64_VR=1 PLUME_VULKAN_CREATE_HOOKS=1)
+    set(BK_OPENXR_PREFIX "/opt/openxr" CACHE PATH "Install prefix of the static OpenXR loader (OpenXR-SDK release-1.1.63)")
+endif()
 add_compile_definitions(
     HLSL_CPU
     __PRFCHWINTRIN_H
@@ -364,5 +373,45 @@ endforeach()
 target_sources(BanjoRecompiled PRIVATE ${GENERATED_NRM_SOURCES})
 
 target_sources(BanjoRecompiled PRIVATE ${SOURCES})
+
+if (BK_VR)
+    set(BK_VR_SOURCES
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_math.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_camsmooth.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_foveation.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_sched.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_settings.c
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_log.c
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge/dk64vr_input.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/menu/dk64vr_menu.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/menu/dk64vr_menu_ui.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/xr/xr_host.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/xr/xr_foveation.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/xr/xr_input.cpp
+        ${CMAKE_SOURCE_DIR}/src/vr/diag/dk64vr_diag.cpp
+        # Stand-ins until the game side lands (weak; the real definitions replace them).
+        ${CMAKE_SOURCE_DIR}/src/vr/game/fallback_profile.c
+        ${CMAKE_SOURCE_DIR}/src/vr/game/fallback_game_state.cpp
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_settings.c
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_perf.c
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_view.c
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_turn.c
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_haptics.c
+    )
+    target_sources(BanjoRecompiled PRIVATE ${BK_VR_SOURCES})
+    # VR code builds with warnings on, whatever the rest of the project uses (lesson 30).
+    set_source_files_properties(${BK_VR_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-Wno-unused-parameter")
+    target_include_directories(BanjoRecompiled PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/vr/include
+        ${CMAKE_SOURCE_DIR}/src/vr/bridge
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/include
+        ${CMAKE_SOURCE_DIR}/lib/RecompFrontend/recompui/src
+        ${BK_OPENXR_PREFIX}/include
+    )
+    # Port naming (standard.md): BK_VR_<KEY> overrides, the BanjoVR application name.
+    target_compile_definitions(BanjoRecompiled PRIVATE BK_VR=1
+        VR_ENV_PREFIX="BK" VR_APPLICATION_NAME="BanjoVR" VR_GAME_TITLE="Banjo-Kazooie" VR_PERSPECTIVE_HUD=1)
+    target_link_libraries(BanjoRecompiled PRIVATE ${BK_OPENXR_PREFIX}/lib/libopenxr_loader.a ${CMAKE_DL_LIBS})
+endif()
 
 set_property(TARGET BanjoRecompiled PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")

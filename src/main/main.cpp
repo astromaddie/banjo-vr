@@ -53,6 +53,10 @@
 #include "../../patches/sound.h"
 #include "../../patches/misc_funcs.h"
 
+#ifdef BK_VR
+#include "../vr/xr/dk64vr_host.h"
+#endif
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -164,6 +168,16 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
     flags |= SDL_WINDOW_METAL;
 #elif defined(RT64_SDL_WINDOW_VULKAN)
     flags |= SDL_WINDOW_VULKAN;
+#endif
+
+#ifdef BK_VR
+    // In VR nothing is presented to the desktop window, and SteamVR shows a mapped game window as a
+    // desktop-game panel in its dashboard: black, in front of the launcher. Keep it unmapped.
+    // Real pads keep working without window focus.
+    if (dk64vr::hostActive()) {
+        flags |= SDL_WINDOW_HIDDEN;
+        SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    }
 #endif
 
     window = SDL_CreateWindow("Banjo: Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1600, 900,  flags);
@@ -611,7 +625,47 @@ void on_launcher_init(recompui::LauncherMenu *menu) {
     menu->remove_default_title();
 
     banjo::launcher_animation_setup(menu);
+#ifdef BK_VR
+    // The VR settings menu's document, created on recompui's thread like the launcher's.
+    dk64vr::hostUiInit();
+#endif
 }
+
+#ifdef BK_VR
+// Player input as the game reads it, with the VR controllers and the diagnostics' input merged in.
+static bool get_n64_input_vr(int player_index, uint16_t* buttons_out, float* x_out, float* y_out) {
+    bool result = recompinput::profiles::get_n64_input(player_index, buttons_out, x_out, y_out);
+    dk64vr::hostFilterInput(player_index, buttons_out, x_out, y_out);
+    return result;
+}
+
+// The game's Rumble Pak motor, to the real pad as before and to the VR controllers' haptics.
+static void set_rumble_vr(int controller_num, bool on) {
+    recompinput::set_rumble(controller_num, on);
+    dk64vr::hostSetRumble(controller_num, on);
+}
+
+// `--game bk` starts the game from the launcher's first update without a click, as newer
+// runtimes do (unattended runs: the one-shot vr-diag file's ARGS line). Needs a stored ROM.
+static bool vr_cli_start_game = false;
+
+static void on_launcher_update_vr(recompui::LauncherMenu *menu) {
+    banjo::launcher_animation_update(menu);
+    if (vr_cli_start_game) {
+        vr_cli_start_game = false;
+        std::u8string game_id = supported_games[0].game_id;
+        if (recomp::is_rom_valid(game_id)) {
+            printf("[vr] --game %s: starting the game from the launcher\n", supported_games[0].mod_game_id.c_str());
+            recompui::update_game_mod_id(supported_games[0].mod_game_id);
+            recomp::start_game(game_id, {});
+            recompui::hide_all_contexts();
+        }
+        else {
+            printf("[vr] --game %s: no valid ROM stored; staying in the launcher\n", supported_games[0].mod_game_id.c_str());
+        }
+    }
+}
+#endif
 
 #define REGISTER_FUNC(name) recomp::overlays::register_base_export(#name, name)
 
@@ -745,7 +799,16 @@ int main(int argc, char** argv) {
     banjo::init_config();
 
     recompui::register_launcher_init_callback(on_launcher_init);
+#ifdef BK_VR
+    for (int i = 1; i + 1 < argc; i++) {
+        if ((strcmp(argv[i], "--game") == 0) && (supported_games[0].mod_game_id == argv[i + 1])) {
+            vr_cli_start_game = true;
+        }
+    }
+    recompui::register_launcher_update_callback(on_launcher_update_vr);
+#else
     recompui::register_launcher_update_callback(banjo::launcher_animation_update);
+#endif
 
     recomp::rsp::callbacks_t rsp_callbacks{
         .get_rsp_microcode = get_rsp_microcode,
@@ -772,8 +835,13 @@ int main(int argc, char** argv) {
 
     ultramodern::input::callbacks_t input_callbacks{
         .poll_input = recompinput::poll_inputs,
+#ifdef BK_VR
+        .get_input = get_n64_input_vr,
+        .set_rumble = set_rumble_vr,
+#else
         .get_input = recompinput::profiles::get_n64_input,
         .set_rumble = recompinput::set_rumble,
+#endif
         .get_connected_device_info = get_connected_device_info,
     };
 
@@ -803,6 +871,12 @@ int main(int argc, char** argv) {
     // Register the .rtz texture pack file format with the previous content type as its only allowed content type.
     recomp::mods::register_mod_container_type("rtz", std::vector{ texture_pack_content_type_id }, false);
 
+#ifdef BK_VR
+    // The OpenXR host, before the renderer creates its Vulkan instance (docs/VR_ARCHITECTURE.md).
+    // Without a headset runtime the game stays flat.
+    dk64vr::hostInstall(recompui::file::get_app_folder_path());
+#endif
+
     recomp::start(
         project_version,
         {},
@@ -815,6 +889,10 @@ int main(int argc, char** argv) {
         error_handling_callbacks,
         threads_callbacks
     );
+
+#ifdef BK_VR
+    dk64vr::hostShutdown();
+#endif
 
     NFD_Quit();
 
