@@ -667,32 +667,36 @@ public:
         // its camera after it. Headings are unwrapped, so a smooth turn may run any distance ahead.
         if (turnFrame != frameCount) {
             turnFrame = frameCount;
-            updateTurn(gameView);
-        }
-
-        if (turn.shownDelta != 0.0f) {
-            if (camOffsetActive || vr_game_profile_ext_get()->reports_turn_applicability) {
-                // Banjo publishes its native focus, rather than a unit forward vector.
-                gameView = orbitViewAround(gameView, turn.shownDelta, camFocus);
+            updateTurn(camBaseView);
+            turnCorrection = Mat4();
+            if (turn.shownDelta != 0.0f) {
+                if (camOffsetActive || vr_game_profile_ext_get()->reports_turn_applicability) {
+                    // The main camera supplies the absolute focus. The sky's origin is rebased:
+                    // share this camera-space correction rather than orbiting it about that focus.
+                    turnCorrection = orbitViewCorrection(camBaseView, turn.shownDelta, camFocus);
+                }
+                else {
+                    const dk64vr_game_state state = gameState();
+                    const float dx = state.cam_at[0] - state.cam_eye[0], dz = state.cam_at[2] - state.cam_eye[2];
+                    const Mat4 turned = orbitViewBy(camBaseView, turn.shownDelta, std::sqrt(dx * dx + dz * dz));
+                    turnCorrection = mul(rigidInverse(camBaseView), turned);
+                }
             }
-            else {
-                const dk64vr_game_state state = gameState();
-                const float dx = state.cam_at[0] - state.cam_eye[0], dz = state.cam_at[2] - state.cam_eye[2];
-                gameView = orbitViewBy(gameView, turn.shownDelta, std::sqrt(dx * dx + dz * dz));
-            }
         }
+        gameView = mul(gameView, turnCorrection);
 
         if (eye == 0) {
             shownHeading = viewHeading(gameView);
             if (shownStatsFrame != frameCount) {
                 shownStatsFrame = frameCount;  // once a frame (a frame can have several camera projections)
-                camShownStats.add(cameraPoseFromView(gameView));
+                const Mat4 mainShown = mul(camBaseView, turnCorrection);
+                camShownStats.add(cameraPoseFromView(mainShown));
                 if (setting("diag_camera_log") != 0.0) {
-                    // Log the actual post-orbit matrix heading, unwrapped near the requested
-                    // heading. This distinguishes a rendered snap from merely writing a target.
+                    // Measure the rendered projection's post-orbit heading, not the target.
+                    // Position uses the main camera's world origin even when the sky draws first.
                     const float expected = turn.heading + turn.shownDelta;
                     const float actual = expected + wrapAngle(shownHeading - expected);
-                    const Vec3 p = viewPosition(gameView);
+                    const Vec3 p = viewPosition(mainShown);
                     dk64vr_logpf("[vr-cam]", "turn f %" PRIu64 " applicable %d game %.3f target %.3f remaining %.3f shown %.3f pos %.2f %.2f %.2f focus %.2f %.2f %.2f",
                         frameCount, int(turnApplicable()), turn.heading * 57.2957795f, turn.target * 57.2957795f,
                         turn.shownDelta * 57.2957795f, actual * 57.2957795f, p.x, p.y, p.z, camFocus.x, camFocus.y, camFocus.z);
@@ -1995,6 +1999,7 @@ private:
         camCorrection = Mat4();
         camOffsetActive = false;
         camOffsetCorrection = Mat4();
+        turnCorrection = Mat4();
     }
 
     // Once per display frame, at its first camera projection: the correction from RT64's linear
@@ -2004,6 +2009,7 @@ private:
     void updateCameraCorrection(const Mat4 &firstView) {
         camCorrectionFrame = frameCount;
         camCorrection = Mat4();
+        camBaseView = firstView;
         camOffsetActive = false;
         const dk64vr_game_state focusState = gameState();
         camFocus = { focusState.cam_at[0], focusState.cam_at[1], focusState.cam_at[2] };
@@ -2024,6 +2030,7 @@ private:
         camLastSampleS = displayS;
         const Mat4 linearView = camSmoother.linear(w);
         const Mat4 smoothView = camSmoother.sample(w, dt, level);
+        camBaseView = smoothView;
         camCorrection = mul(rigidInverse(linearView), smoothView);
 
         const dk64vr_game_state state = gameState();
@@ -2033,9 +2040,9 @@ private:
         if (camOffsetActive) {
             // One offset correction for every camera projection of both eyes. Apply AFTER
             // smoothing, using the focus sampled with the same history/weight; no 30 Hz offset.
-            const Mat4 corrected = mul(firstView, camCorrection);
-            const Mat4 adjusted = thirdPersonView(corrected, camFocus, lower, closer);
-            camOffsetCorrection = mul(rigidInverse(corrected), adjusted);
+            const Mat4 adjusted = thirdPersonView(smoothView, camFocus, lower, closer);
+            camOffsetCorrection = mul(rigidInverse(smoothView), adjusted);
+            camBaseView = adjusted;
             if (setting("diag_camera_log") != 0.0) {
                 const Vec3 p = viewPosition(adjusted);
                 dk64vr_logpf("[vr-cam]", "origin f %" PRIu64 " focus %.2f %.2f %.2f adjusted %.2f %.2f %.2f", frameCount, camFocus.x, camFocus.y, camFocus.z, p.x, p.y, p.z);
@@ -3315,6 +3322,7 @@ private:
     bool diagTurnHeld = false;
     Mat4 camCorrection;
     Mat4 camOffsetCorrection;
+    Mat4 camBaseView, turnCorrection;
     Vec3 camFocus;
     bool camOffsetActive = false;
     uint64_t camCorrectionFrame = UINT64_MAX;

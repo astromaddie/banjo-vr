@@ -1,8 +1,9 @@
 # Banjo-Kazooie VR game side
 
-Game-side integration for BanjoRecomp US 1.0, based on `steam-frame` 009795a.
+Game-side integration for BanjoRecomp US 1.0. Comfort turning is based on `steam-frame` e4a503a.
 The frozen `src/vr/include/dk64vr_game_state.h` and `vr_game_profile.h` are unchanged.
-No renderer source, submodule, headset, deployment, or remote branch was changed.
+Comfort turning changes the game patch and XR host bridge; RT64, submodules, headset, deployment
+and remote branches are unchanged.
 
 ## Profile and camera evidence
 
@@ -47,9 +48,10 @@ mode may lead or lag that workload by a tick, as permitted by the frozen contrac
 must latch scene routing, not interpret snapshot.frame as a display/XR frame identifier.
 The game simulation and display-list building still run once, never once per eye.
 
-The world projection hook captures eye, at (eye plus unit forward), up including roll, FOV,
-and **effective** near/far (`camera_transform_tagging.c:56`, `vr_scene.c:24`). Sky/HUD/temporary
-projections are excluded. `vr_frame_hook` adds player position and degree-to-radian yaw,
+The world projection hook captures eye, at, up including roll, FOV,
+and **effective** near/far (`camera_transform_tagging.c:56`, `vr_scene.c:24`). In active third-person dynamic-camera play, at is the native `func_802C02D4` camera focus
+(including player height and camera lag); inactive, first-person and non-dynamic cameras retain
+eye plus unit forward. Sky/HUD/temporary projections are excluded. `vr_frame_hook` adds player position and degree-to-radian yaw,
 zeroes those player fields when no player is present, increments the snapshot frame counter,
 and consumes the sky latch. Before the first world projection the camera fields are zero;
 stay on the panel until a valid world perspective is available. With no new draw during a
@@ -91,14 +93,17 @@ Imports (`patches/syms.ld:58`):
 
 - `recomp_vr_is_active` = `0x8F0000D0`, returns `dk64vr_is_active()`.
 - `recomp_vr_publish_game_state` = `0x8F0000D4`, takes the MIPS pointer in a0.
+- `recomp_vr_take_turn` = `0x8F0000D8`, takes current camera applicability in a0 and returns
+  accumulated whole degrees in v0 (positive right). Rejection drains the queue.
 
 The host and profile are in the normal CMake source list. Active defaults to zero. The renderer
 calls `dk64vr_set_active(1)` only when its stereo path is active and clears it on shutdown/loss.
 `BK_VR_FORCE_PATCHES=1` forces gates/logging for a flat diagnostic process; unset, empty, or a
 value starting with `0` does nothing. It is sampled once per process and is **not** a replacement
-for a VR runtime. This bridge supplies the two frozen interfaces only; pause/comfort-turn/input
-APIs from DK64's separate `dk64vr_control.h` are outside this game-side contract. Standby
-simulation blocking and controller integration need the renderer/coordinator's separate wiring.
+for a VR runtime. The snapshot ABI remains frozen. Pause and comfort-turn APIs live separately in
+`dk64vr_control.h` / `vr_control.cpp`; the publish waits outside game locks while the XR host
+pauses simulation. Scene changes outside gameplay, inactivity, pause, cuts and recentre clear
+the pending turn queue.
 
 ## Every new VR gate
 
@@ -162,9 +167,9 @@ GBI cull command or that every gameplay visibility check behaves well with head 
 | Pillarbox / letterbox and cutscene clipping | Orthographic `0x1009`, model IDs `0x31000000`; `pillarbox_patches.c:52`; extended GBI scissor | Retain for panel/cinema content. Banjo's pillarbox is geometry, not DK64's reduced camera viewport. Cinema cropping must use Banjo's actual scissor/bars, not fixed DK64 row assumptions. |
 | Bottles puzzle / SNS photograph | Framebuffer imagery and screen-space interaction, modes 8/A | Panel. Includes 3D models but isn't immersive gameplay. |
 | Fog, near clipping, aspect ratio | Native fog; projection scale 0.5; recomp already disables near clipping/depth-clamps in `graphics_patches.c:120` | Renderer owns physical eye near/fog remap and runtime asymmetric FOV. Do not assume DK64 near 10 or FOV 45 applies to every frame. Retain normal aspect behavior off; panel/cinema uses native presentation. |
-| Audio / collision / aiming / room-scale / comfort turn | Game camera/input remain native | This task adds no input/room-scale implementation. Use native game/controller paths; room-scale cannot just move the render eye. |
+| Audio / collision / aiming / room-scale / comfort turn | Game camera/input remain native | Comfort turning changes the native free-camera target, retaining collision and movement; see below. Room-scale cannot just move the render eye. |
 
-## Verification and reproduction
+## Initial game-side verification and reproduction
 
 Verified levels: MIPS patch compile/link, N64Recomp code generation, native host tests and generated
 MIPS execution tests. **Full game build, GPU eye/HUD capture, device install/run and worn acceptance
@@ -221,3 +226,60 @@ patches.elf  58ba389f22c8672146542d31b00830a79477f7c02221612d85a1bcadddf7c8ce
 patches.bin  1534fd973c72c31f980f5a29b8d2a459fc73387576e00ca6c9d1bdc39007c9c6
 patches.c    f80830df3f45f5d3209562ddd05bcf657e763ffdb795243226d4a5fda154113d
 ```
+
+## Comfort turning
+
+`patches/camera_transform_tagging.c::ncCamera_update` calls `vr_apply_comfort_turn(camType)`
+(`patches/vr_turn.c`) immediately before the existing camera dispatch. The existing interpolation
+cut tags and native dispatch remain intact. Every turn effect is gated by `recomp_vr_is_active()`.
+The new import reports whether the effective camera can accept turns even when it is disabled
+or static; the XR host ignores turn input and drops compensation when the report is false.
+`reports_turn_applicability` is the only added profile-extension field; `takes_comfort_turn = 1`.
+
+A free camera enters BanjoRecomp's R-look state `0x13`. Its orbit yaw is stored in **degrees**:
+`D_8037DBA4` is the target, `D_8037DBA8` the current radial yaw, `D_8037DBAC` angular velocity.
+A right turn subtracts degrees from the target (Banjo's positive yaw turns left). The patch
+keeps an unwrapped remaining debt and advances a proxy target at most 179 degrees ahead of
+current yaw, so the native shortest-angle follower cannot reverse when smooth input gets more
+than half a revolution ahead. `recomp_analog_camera_held` retains R-look until arrival; its
+existing water/flight logic also retains that state. The VR-only initialization preserves the
+current focus/yaw/radius even when the desktop analog-camera option is disabled. Normal gameplay,
+Talon Trot and ground transformations use the same free follow states; swim state 3 and flight
+state 4 (including bee flight) can enter this orbit. Their native movement/steering is untouched.
+
+The game's `ncDynamicCam13_update` / `func_802BDB30` follower is **eased**, not instant: maximum
+160 deg/s, acceleration 800 deg/s², and below 100 degrees remaining a speed of
+`10 + 1.5 * abs(remaining)` deg/s. Executing the original-ROM follower through generated MIPS,
+at 30 Hz with no collision, a 45-degree turn reaches within 0.01 degrees in **1.333 s**.
+A queued 765-degree debt reaches within 0.01 degrees in **6.1 s**. These are controlled host
+measurements; native mode interpolation (7/30 s) and presentation smoothing can extend visible
+game-camera convergence. Actual map/collision/device timing has not been measured.
+
+The XR host shows the requested heading in one display frame by orbiting the eye view about
+the sampled native focus, after camera smoothing. `orbitViewCorrection` derives one correction
+from the main camera and shares it across both eyes and projections, keeping the sky's rebased
+origin aligned with the world. Camera lower/closer offsets use that same main camera. Headings are unwrapped;
+left-stick movement is reprojected by the same remaining angle for head- and hand-relative
+movement. Snap defaults to 45 degrees. `turn_mode = smooth` uses the existing 20% deadzone,
+power-1.5 response and default 120 deg/s; release stops the shown heading immediately while
+the native camera catches up. `right_stick_x = camera` retains the game's C-left/C-right swing.
+Previously saved explicit `camera` settings remain explicit; fresh/missing keys default to `turn`.
+
+Rejected cameras do nothing: missing/disabled player/camera, non-gameplay scenes, first person,
+pause/frozen world, scripted/static/random cameras, camera nodes (dynamic 8 / 0x11), spline
+0x12, climbing 0x10, C-swing 0xA, and other action/locked states outside the whitelist
+`1, 3, 4, 0xB, 0x13`. Controller modes 0 / 5 / 6 / 7 / 8 / 9 / 0xA and final Grunty arena
+map 0x90 are excluded. Native R-recentre or C-left/right takes priority. Hard cuts/recentre
+reset host compensation; camera jumps over 400 units or a native exit from R-look abandon
+game-side debt. Requests older than 300 ms expire. An abandoned/timeout turn unwinds over
+0.4 s by the equivalent shortest angle (no extra revolutions); rejection/scene changes clear
+it immediately. The deadline is 8 s after the last input.
+
+Verification added: 1,420 pure/import checks (real host import, rejection/pause/inactivity,
+request expiry, snap/smooth unwrapped compensation including slow fractional holds, release, timeout/cuts, pivot radius and
+translated world/sky origins with smoothing/offsets, and bounded multi-revolution unwind),
+Banjo fresh defaults, original-ROM versus patched inactive dispatch, generated heading writes,
+original native follower, water/flight R-look retention and forced-camera rejection. Existing
+8,930 bridge checks and generated culling/snapshot gates also pass. ARM64 build/package and
+flat compilation are checked separately in [VR_ARCHITECTURE.md](VR_ARCHITECTURE.md).
+No device or worn acceptance was performed. The exact coordinator device check is there too.
