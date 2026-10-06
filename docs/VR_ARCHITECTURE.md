@@ -67,6 +67,9 @@ libatomic bundled, libstdc++ static; the ABI check passes the glibc 2.35 floor.
     camera (the eye camera only replaces projections in the camera groups). Unattended dump:
     Grunty's 3D portrait and dialogue box in the HUD image, absent from the eyes.
   - `billboard_groups`: camera-facing billboards (section 4a).
+  - `sky_camera_group` = `0x1001`: the sky's eye cameras sit at the head's centre (section 4b).
+  - `pause_menu_hud` = 1: the pause menu shows from the HUD image over the frozen world
+    (section 4c).
   - `takes_comfort_turn` = 1. The free-camera patch consumes `recomp_vr_take_turn(applicable)`
     and changes Banjo's R-look target yaw. Right stick defaults to comfort turn, snap 45 degrees;
     `right_stick_x = camera` keeps the native C-left/C-right swing.
@@ -124,6 +127,45 @@ logs the turned billboards and any untagged matrix that faces the game camera.
 Why upright for sprites: they stand for upright things, and the eye is often above or below them
 (the third-person camera, a lean); a fully facing card tilts back and leaves the ground. Particles
 and effects are volumetric puffs, so they face the viewer completely.
+
+### 4b. The sky at infinity
+
+Banjo's sky (`sky_draw`, projection group `0x1001`, identity view) is a small model centred on the
+game camera, drawn first without depth. Measured with `RT64_VR_LOG_PROJECTIONS` on Spiral Mountain,
+its vertices lie **64-190 units** from the camera: 0.6-1.9 m at `world_scale` 100. Given each eye's
+camera like the world, that put the sky at arm's length: in the eye dumps its clouds had 51-87 px
+more crossed disparity than Gruntilda's tower, which sat at infinity, and every head movement
+moved the eyes inside a dome about a metre across. In the headset it read as a sky that turns with
+the head. Now the sky's eye cameras keep each eye's rotation and projection but sit at the head's
+centre with no head translation (`xr_host.cpp` `eyeCamera`, through RT64's `eyeCameraGroup`), so
+it is at infinity: the same cloud patches now match at exactly the infinity offset (0 px excess)
+and the tower is unchanged. The yaw 0/90/180/270 dumps show different parts of the sky (blue above
+the house, Gruntilda's green clouds above her lair), level with the world. `sky_at_infinity = 0`
+brings the old behaviour back for A/B.
+
+Note on eye dumps: the lens's hidden area (outside the octagon-like outline) isn't drawn by the
+depth-tested world. The sky, drawn without depth, fills it, so the right edge of a left-eye dump
+shows the sky's lower half as a flat green area. The lenses never show that region.
+
+### 4c. Pause menu over the frozen world
+
+Banjo's pause menu draws its background as a copy of the last world frame: on the first paused
+frame `gcpausemenu_draw` copies the colour buffer into the Z-buffer (`func_80315084`), and every
+later paused frame blits it back (`func_80315110`) over a black fill; the world itself isn't drawn
+while paused. In VR the patched blit `func_80314BB0` (`patches/pause_menu_patches.c`) returns
+without drawing, so paused frames hold only the menu: the zoomboxes (3D models in the `0x1004` HUD
+perspective), their portraits and text, the item counters and the spinning jiggy.
+
+The host keeps the stereo world frozen and dimmed as before. Once the pause panel latches it asks
+RT64 for `VrFrame::Mode::Hud` frames (rt64 0b59675) instead of flat ones: each paused frame is
+rendered once at the eye size and its HUD calls are solved into the HUD image. With no camera
+group in the frame, every non-full-frame 2D draw and every perspective outside the camera groups
+counts as HUD; the black fill covers the frame and stays out. The HUD image takes the panel's place
+(world-locked, 2 m, `panel_width` wide, 4:3) over transparent black, like DK64's VR settings menu.
+A recomp menu over the pause still uses the panel. `pause menu: on/off the HUD image` in the log.
+
+`diag_pause_at=N` (seconds of live stereo play) dumps the eyes, presses Start, dumps the HUD image
+(`vr-hud-101/102`) and the panel 1.5 s and 4.5 s into the pause, then presses Start again.
 
 ## 5. Frame protocol, eye camera, HUD, cinema, menus
 
@@ -246,6 +288,8 @@ and dumps; it never pressed a real button and nobody wore it.
 | HUD split incl. Banjo's perspective HUD and portraits | verified unattended (dialogue box and Grunty portrait in the HUD image, not in the eyes) |
 | 3D cinema for the intro cutscenes | verified unattended (cinema layer, picture rows 0-1: Banjo's pillarbox is geometry, so the whole frame is the picture) |
 | Controller bindings (Frame, Index, Touch suggested and accepted) | verified unattended (all three accepted); no real button press yet |
+| Sky at infinity (section 4b) | verified unattended (yaw 0/90/180/270 eye dumps; stereo matching of the clouds before/after) |
+| Pause menu from the HUD image over the frozen, dimmed world (section 4c) | verified unattended (`diag_pause_at`: menu complete in the HUD image with solved alpha, composite over the frozen eye image, pause and resume logs); real Start press and worn look pending |
 | Pause (game thread waits in the state publish) | verified unattended through the VR settings menu (game 0.0 Hz while open, resumes on close); standby/focus pause not exercised (runs force rendering) |
 | VR settings menu (quick menu, full panel, all tabs) | verified unattended (`diag_vr_menu_at` tour over the frozen cinema; "Banjo 1.4 m", right stick "Game camera"); real input headset-unverified |
 | Recomp menus on the panel, pointer | built (shared code); not exercised on Banjo |

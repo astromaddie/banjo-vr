@@ -62,7 +62,7 @@ load, the last camera is retained; the scene tells the renderer to freeze/show i
 | Scene | Rule | Renderer treatment |
 | --- | --- | --- |
 | Transition | `gctransition_active()`, or game mode 1/2 (load/change mode) | Freeze/fade the last stereo world; render native transition content flat. Covers fade-to/from-black/white, jigsaw/zoom/falling-piece effects and destination loads. |
-| Pause | Game mode 4 | Freeze/dim world and show pause/totals/menu panel. |
+| Pause | Game mode 4 | Freeze/dim world and show the pause/totals menu from the HUD image (VR skips the menu's background copy of the world; VR_ARCHITECTURE.md 4c). |
 | Menu / 2D | Nintendo/concert boot map 0x1E, Rareware boot map 0x1F, file select 0x91, game-over map 0x83; attract demo mode 7, title mode 9, Bottles puzzle mode 8, SNS picture mode A | Panel. The complete Nintendo/concert boot map deliberately remains panel content; story intro/Grunty maps below use cinema. Bottles and photos use framebuffer imagery/2D interaction despite containing models. Unknown non-play modes also fail closed to menu. |
 | Cutscene | `LEVEL_D_CUTSCENE`, camera types 1 (script-controlled), 3 (static), 4 (random), or player states `BS_44_JIG_JIGGY` / `BS_34_JIG_NOTEDOOR` | Cinema by default. Covers story intro, Grunty shots, endings, static camera reveals, jiggy dance and note-door fanfare. |
 | First person | `ncFirstPersonCamera_getState()` 1..3 (enter, look idle, exit) | Stereo with first-person camera anchor. State 4 means done. |
@@ -155,7 +155,7 @@ GBI cull command or that every gameplay visibility check behaves well with head 
 | Draw | Existing representation | VR rule / remaining renderer work |
 | --- | --- | --- |
 | World camera / map / Banjo / actors | Perspective `0x1000`; map IDs `0x00400000` / `0x00800000`, Banjo `0x10000000` | Eye-camera replacement only on world perspectives. Preserve explicit view compensation and interpolation/cut handling. |
-| Sky and cloud layers | Camera-centred 3D models, perspective `0x1001`, model IDs starting `0x00F20000`; sky near/far 5/15,000 | Keep native world sky and rotation. Include this perspective in eye replay, not HUD extraction. `sky_dome=1` means native sky models were drawn, not a synthetic DK64 dome. In maps with no sky model, native black background remains. Sky origin differs from the absolute world-camera origin. |
+| Sky and cloud layers | Camera-centred 3D models, perspective `0x1001`, model IDs starting `0x00F20000`; sky near/far 5/15,000 | Keep native world sky and rotation. Include this perspective in eye replay, not HUD extraction. The models are only 64-190 units from the camera, so the host draws this group from the head's centre (at infinity; VR_ARCHITECTURE.md 4b). `sky_dome=1` means native sky models were drawn, not a synthetic DK64 dome. In maps with no sky model, native black background remains. Sky origin differs from the absolute world-camera origin. |
 | Sun | Sky model textures / flare system | Native sky model is retained; flare quads are suppressed. No separate DK64-style screen sun sprite was found in the sky/flare paths. |
 | Lens flare | Camera-relative model quads (`func_80350818`) | Suppressed by gate above. |
 | Billboard props/particles | World position; model orientation faces the **game** camera (`vr_sprite.c:65`, `:129`) | Now submitted from all headings. In VR their matrix groups carry a billboard flag and RT64 turns them to the viewer (VR_ARCHITECTURE.md section 4a). Authored-rotation `func_80344720` quads keep their orientation. Verified unattended, not worn. |
