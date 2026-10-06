@@ -17,7 +17,8 @@ struct TurnRequests {
 enum class TurnEnd { None, Arrived, TimedOut, Overtaken, NotApplicable };
 
 // Display-heading compensation. Game headings wrap; requested/display headings do not.
-// Camera cuts/recentre call reset. Rejection is immediate; abandoned turns unwind in 0.4 s.
+// Camera cuts/recentre call reset. Rejection is immediate; abandoned turns unwind by the
+// equivalent shortest angle in 0.4 s, without replaying extra revolutions of unwrapped debt.
 struct ComfortTurn {
     bool active = false, headingValid = false;
     float target = 0, heading = 0, raw = 0, shownDelta = 0, releaseFrom = 0, remainder = 0;

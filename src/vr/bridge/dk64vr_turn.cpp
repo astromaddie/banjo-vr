@@ -38,7 +38,9 @@ TurnEnd ComfortTurn::update(float gameHeading, double now, bool applicable, bool
         const bool timedOut = now - start > 8.0;
         if (settled || timedOut || overtaken) {
             active = false;
-            releaseFrom = settled ? 0 : delta;
+            // The view is periodic. Abandoning unwrapped debt must not unwind whole extra
+            // revolutions: the equivalent shortest angle starts at the same physical view.
+            releaseFrom = settled ? 0 : wrapAngle(delta);
             release = now;
             shownDelta = releaseFrom;
             remainder = 0;

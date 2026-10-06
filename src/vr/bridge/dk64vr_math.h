@@ -77,6 +77,9 @@ Mat4 orbitView(const Mat4 &view, float targetHeadingRad, float pivotDistance, fl
 Mat4 orbitViewBy(const Mat4 &view, float deltaRad, float pivotDistance);
 // Orbit about an explicit world-space look-at target (used by the adjusted head origin).
 Mat4 orbitViewAround(const Mat4 &view, float deltaRad, const Vec3 &pivot);
+// One camera-space correction from the main view, shared by projections with rebased origins
+// (Banjo's sky). Applying an absolute pivot separately to each projection would move the sky.
+Mat4 orbitViewCorrection(const Mat4 &mainView, float deltaRad, const Vec3 &pivot);
 // Closer first along eye -> target, then lower the remaining height to the target. Every
 // coordinate stays between eye and target; no collision query. Zero settings return view
 // verbatim. Lowering adjusts the inherited pitch toward the target while preserving heading;

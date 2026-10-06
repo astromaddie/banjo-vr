@@ -68,6 +68,33 @@ int main() {
     }
     CHECK(turn.update(-pi/4,1,true,false) == TurnEnd::Arrived && !turn.active);
 
+    // Main/world and sky cameras have different origins. With a translated world, the same
+    // camera-space correction must match an orbit about the sky's correctly rebased focus.
+    // Include smoothing and lower/closer offsets before turning, as the renderer does.
+    for (float origin : {0.0f, 1000.0f, -4000.0f}) {
+        Pose raw; raw.p = {origin + 100, 180, origin + 850}; raw.q = quatFromYaw(0.3f);
+        Pose smoothed = raw; smoothed.p.x += 10; smoothed.q = quatFromYaw(0.4f);
+        const Mat4 rawView = rigidInverse(poseMatrix(raw));
+        const Mat4 smoothView = rigidInverse(poseMatrix(smoothed));
+        const Vec3 pivot{origin + 100,80,origin + 300};
+        const Mat4 adjusted = thirdPersonView(smoothView,pivot,0.5f,0.2f);
+        Pose sky = raw; sky.p = {0,0,0};
+        const Mat4 preTurn = mul(mul(rigidInverse(poseMatrix(sky)),mul(rigidInverse(rawView),smoothView)),
+            mul(rigidInverse(smoothView),adjusted));
+        const Vec3 skyPivot{pivot.x-raw.p.x,pivot.y-raw.p.y,pivot.z-raw.p.z};
+        for (float angle : {-pi/4, pi/2, -8*pi/3}) {
+            const Mat4 correction = orbitViewCorrection(adjusted,angle,pivot);
+            const Mat4 mainShown = mul(adjusted,correction);
+            const Mat4 skyShown = mul(preTurn,correction);
+            const Mat4 mainExpected = orbitViewAround(adjusted,angle,pivot);
+            const Mat4 skyExpected = orbitViewAround(preTurn,angle,skyPivot);
+            for (int r=0; r<4; ++r) for (int c=0; c<4; ++c) {
+                CHECK(std::fabs(mainShown.m[r][c]-mainExpected.m[r][c]) < 0.003f);
+                CHECK(std::fabs(skyShown.m[r][c]-skyExpected.m[r][c]) < 0.003f);
+            }
+        }
+    }
+
     // Smooth turn across multiple wraps; shown rate/stop are independent of native easing.
     turn.reset(); turn.update(0,0,true,false);
     int whole = 0;
@@ -90,6 +117,20 @@ int main() {
     CHECK(turn.update(0,8.1,true,false) == TurnEnd::TimedOut);
     turn.update(0,8.3,true,false); CLOSE(turn.shownDelta,-pi/8);
     turn.update(0,8.6,true,false); CLOSE(turn.shownDelta,0);
+    // Abandoning multi-revolution debt must not replay those revolutions during the unwind.
+    turn.reset(); turn.update(0,0,true,false); turn.apply(765,0,true);
+    turn.update(0,0,true,false);
+    CHECK(turn.update(0,8.1,true,false) == TurnEnd::TimedOut);
+    CLOSE(wrapAngle(turn.shownDelta),-pi/4);
+    CHECK(std::fabs(turn.shownDelta) <= pi);
+    float previousShown = turn.shownDelta;
+    for (int i=1; i<=20; ++i) {
+        turn.update(0,8.1+i*0.02,true,false);
+        CHECK(std::fabs(wrapAngle(turn.shownDelta-previousShown)) < 0.1f);
+        CHECK(std::fabs(turn.shownDelta) <= pi);
+        previousShown = turn.shownDelta;
+    }
+    CLOSE(turn.shownDelta,0);
     turn.apply(45,9,true); CHECK(turn.update(0,9,true,true) == TurnEnd::Overtaken);
     turn.reset(); CHECK(!turn.headingValid && turn.shownDelta == 0);
     // Whole-degree import carries subdegree increments without bias across direction changes.
