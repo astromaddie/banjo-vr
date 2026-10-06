@@ -139,6 +139,16 @@ int main() {
     CHECK(whole == 20);
     for (int i=0; i<100; ++i) whole += turn.apply(-0.2f,0,true);
     CHECK(whole == 0);
+    // A low-speed smooth hold must accumulate subdegree input across display frames.
+    // Each increment is smaller than the arrival tolerance, before the game can follow.
+    turn.reset(); turn.update(0,0,true,false); whole = 0;
+    for (int i=1; i<=120; ++i) {
+        const double now = i/120.0;
+        whole += turn.apply(0.125f,now,true);
+        turn.update(0,now,true,false);
+        CLOSE(turn.heading+turn.shownDelta,-i*0.125f*pi/180);
+    }
+    CHECK(whole == 15 && turn.active);
     float x=0,y=1; rotateStick(-pi/4,x,y); CLOSE(x,std::sqrt(0.5f)); CLOSE(y,std::sqrt(0.5f));
     std::printf("comfort turn: %d checks, %d failures\n",checks,failures);
     return failures ? 1 : 0;

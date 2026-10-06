@@ -34,7 +34,9 @@ TurnEnd ComfortTurn::update(float gameHeading, double now, bool applicable, bool
     if (active) {
         const float delta = target - heading;
         shownDelta = delta;
-        const bool settled = std::fabs(delta) < 0.004f;
+        // A new smooth increment can be smaller than the arrival tolerance. Keep its
+        // fractional request until a later frame, so a slow hold still drives the game.
+        const bool settled = now > start && std::fabs(delta) < 0.004f;
         const bool timedOut = now - start > 8.0;
         if (settled || timedOut || overtaken) {
             active = false;
