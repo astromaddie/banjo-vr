@@ -25,5 +25,23 @@ add_executable(dk64vr_tests
 target_include_directories(dk64vr_tests PRIVATE ${DK64VR_ROOT}/src/vr/include ${DK64VR_ROOT}/src/vr/bridge ${DK64VR_ROOT}/src/vr/menu ${DK64VR_ROOT}/third_party/sfvr/include ${DK64VR_ROOT}/lib/rt64/src)
 target_compile_options(dk64vr_tests PRIVATE -Wall -Wextra -ffp-contract=off)
 target_link_libraries(dk64vr_tests PRIVATE m)
+# The same layer with Banjo's profile.
+add_executable(banjo_profile_tests
+    ${CMAKE_CURRENT_LIST_DIR}/banjo_profile_tests.cpp
+    ${DK64VR_ROOT}/src/vr/game/banjo_profile.c
+    ${DK64VR_ROOT}/src/vr/game/banjo_profile_ext.c
+    ${DK64VR_ROOT}/src/vr/bridge/dk64vr_settings.c
+    ${DK64VR_ROOT}/src/vr/bridge/dk64vr_log.c
+    ${DK64VR_ROOT}/src/vr/bridge/dk64vr_input.cpp
+    ${DK64VR_ROOT}/src/vr/menu/dk64vr_menu.cpp
+    ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_settings.c
+    ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_view.c
+    ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_turn.c
+    ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_haptics.c)
+target_include_directories(banjo_profile_tests PRIVATE ${DK64VR_ROOT}/src/vr/include ${DK64VR_ROOT}/src/vr/bridge ${DK64VR_ROOT}/src/vr/menu ${DK64VR_ROOT}/third_party/sfvr/include ${DK64VR_ROOT}/lib/rt64/src)
+target_compile_options(banjo_profile_tests PRIVATE -Wall -Wextra -ffp-contract=off)
+target_link_libraries(banjo_profile_tests PRIVATE m)
+
 enable_testing()
 add_test(NAME dk64vr_tests COMMAND dk64vr_tests)
+add_test(NAME banjo_profile_tests COMMAND banjo_profile_tests)

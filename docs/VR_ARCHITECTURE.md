@@ -107,20 +107,37 @@ and dumps; it never pressed a real button and nobody wore it.
 | Linux ARM64 flat build and package, ABI check | builds; container smoke run reaches the launcher UI; flat not run on the Frame |
 | VR build, host unit tests (8,930 checks, DK64 profile) | pass |
 | OpenXR host, Vulkan binding, session lifecycle, clean exit (`diag_exit_seconds`) | verified unattended |
-| Scene routing from the game side (boot/title/file select on the panel, intro in the cinema, transitions freeze) | verified unattended (log) |
-| Stereo gameplay eye images, culling behind the head | see section 6a |
+| Scene routing from the game side (boot/title/file select on the panel, intro in the cinema, transitions freeze, gameplay in stereo) | verified unattended (log: transition, menu, cutscene/transition through the intro, gameplay after about 3.5 min of autostart presses) |
+| Stereo gameplay eye images, culling behind the head | verified unattended (Spiral Mountain at Banjo's house, yaw 0/90/180: both eyes consistent, world-locked, scenery present behind the head; section 6a) |
 | HUD split incl. Banjo's perspective HUD and portraits | verified unattended (dialogue box and Grunty portrait in the HUD image, not in the eyes) |
 | 3D cinema for the intro cutscenes | verified unattended (cinema layer, picture rows 0-1: Banjo's pillarbox is geometry, so the whole frame is the picture) |
 | Controller bindings (Frame, Index, Touch suggested and accepted) | verified unattended (all three accepted); no real button press yet |
-| Pause on standby / focus loss | built; not exercised (unattended runs force rendering) |
-| VR settings menu, recomp menus on the panel, pointer | built (shared code); not exercised on Banjo |
+| Pause (game thread waits in the state publish) | verified unattended through the VR settings menu (game 0.0 Hz while open, resumes on close); standby/focus pause not exercised (runs force rendering) |
+| VR settings menu (quick menu, full panel, all tabs) | verified unattended (`diag_vr_menu_at` tour over the frozen cinema; "Banjo 1.4 m", right stick "Game camera"); real input headset-unverified |
+| Recomp menus on the panel, pointer | built (shared code); not exercised on Banjo |
 | Billboard sprites facing the eye, not the game camera | not started (game side lists it as renderer work) |
 | Comfort turn | off by default (no camera patch); game camera swing on the right stick |
 | Worn | never |
 
-### 6a. Measured (unattended)
+### 6a. Measured (unattended, off-head, Steam launch, 2026-10-06)
 
-To be filled from the device runs (below).
+No per-app SteamVR entry yet, so the display ran at 72 Hz; eyes 2160 x 2160, foveation high
+(eye-tracked, falling back to the projection centre off-head), `world_scale` 100.
+
+| Scene | fps | Missed / 10 s | GPU a frame (both eyes + copy) |
+| --- | --- | --- | --- |
+| Spiral Mountain, gameplay (2 windows x 2 runs) | 71.7-71.8 | 1-2 | 5.8-6.9 ms (eyes 2.8-3.5 ms each) |
+| Intro cutscenes in the cinema | 71.7-72.0 | 0-2 (22-24 in the window with the first stereo switch) | 5.6-8.0 ms |
+
+At 120 Hz the frame budget is 8.33 ms; the gameplay GPU time fits, but 120 Hz itself is
+unmeasured (needs the per-app setting and a Steam launch). Dumps looked at: Spiral Mountain eye
+pairs at yaw 0/90/180 (both eyes, consistent stereo, the house, fence, flowers and cliffs in
+place, nothing missing behind the head), the HUD image (lives and honeycomb health counters,
+solved alpha, absent from the eyes), the intro's dialogue box with Grunty's 3D portrait in the
+HUD image, Gruntilda's lair in the cinema, and the VR settings menu panels.
+
+Not judged from dumps: depth comfort, scale (Banjo is small and far in the starting shot),
+billboard orientation when the head turns, and anything about input.
 
 ## 7. SteamVR per-app setting
 

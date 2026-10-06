@@ -75,6 +75,7 @@ step_vrtest() {
 		-DCMAKE_C_COMPILER=clang-15 -DCMAKE_CXX_COMPILER=clang++-15
 	cmake --build "$build/vrtest"
 	"$build/vrtest/dk64vr_tests"
+	"$build/vrtest/banjo_profile_tests"
 	bash tools/steam_frame/test-vr-diag.sh "$build/vrtest"
 }
 
