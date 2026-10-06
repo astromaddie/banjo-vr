@@ -404,7 +404,9 @@ RECOMP_PATCH void func_802C069C(void) {
     // to compute the yaw. Otherwise, use the original function.
     //func_802C02D4(sp1C);
     u32 index = (dynamic_camera_target_frame & 1) ^ 1;
-    if (r_look_get_target_from_previous_frame_fix && recomp_analog_camera_enabled() && (dynamic_camera_target_frames[index] == (dynamic_camera_target_frame - 1))) {
+    if (r_look_get_target_from_previous_frame_fix
+        && (recomp_analog_camera_enabled() || vr_comfort_camera_active())
+        && (dynamic_camera_target_frames[index] == (dynamic_camera_target_frame - 1))) {
         ml_vec3f_copy(sp1C, dynamic_camera_targets[index]);
     }
     else {

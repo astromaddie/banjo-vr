@@ -139,6 +139,18 @@ int main() {
     dk64vr_request_turn(45); call(vr_apply_comfort_turn,rdram,2);
     assert(dynamic==0x13 && std::fabs(diff(f(rdram,K_D_8037DBA4),315))<0.001f);
     assert(f(rdram,K_analog_inherited_distance)==550); // works with desktop analog disabled
+    // The existing previous-focus initialization fix must also work with desktop analog off.
+    // Eye belongs to the old focus; recomputing yaw from a moving player's new focus drifts.
+    MEM_W(0,addr(K_dynamic_camera_target_frame))=55;
+    MEM_W(0,addr(K_dynamic_camera_target_frames))=54;
+    put(rdram,addr(K_dynamic_camera_targets),target);
+    target[0]+=100;
+    MEM_W(0,addr(K_r_look_get_target_from_previous_frame_fix))=1;
+    call(func_802C069C,rdram);
+    assert(std::fabs(f(rdram,K_D_8037DBA8))<0.001f);
+    target[0]-=100;
+    MEM_W(0,addr(K_r_look_get_target_from_previous_frame_fix))=0;
+    MEM_W(0,addr(K_dynamic_camera_target_frame))=0;
     assert(call(vr_comfort_camera_held,rdram).r2==1);
     float seconds=0;
     while(std::fabs(diff(f(rdram,K_D_8037DBA8),315))>0.01f && seconds<8) {
