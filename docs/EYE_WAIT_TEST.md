@@ -198,17 +198,45 @@ not lose or overwrite a requested PNG when multiple recordings are pending.
 
 ## Host evidence
 
-Bookkeeping: `BUILD_DIR=build-vrtest JOBS=4 tools/docker/build-linux.sh vrtest`, including
-the production slot-ring header (24,011 checks), existing bridge tests (8,930 checks),
-Banjo profile tests and the one-shot diagnostic launcher suite.
+Verified on 2026-10-06 with image `dk64-vr-linux`, ARM64 Release, clang 15.0.7, four jobs.
+Executable source: superproject `1e357d729843c673f3561b6915c4f31cb008d4a8`, RT64
+`a1335d3e566e2a3b0fcf95f14b08cc8a703ad6b4`. The following documentation commit does not
+change executable inputs.
 
-Build/package: `BK_ROM="/Users/mads/Downloads/Banjo-Kazooie (USA).z64" BK_VR=1 JOBS=4
-tools/docker/build-linux.sh build`, then `BK_VR=1 tools/docker/build-linux.sh package`.
-The flat compile uses the same build tree reconfigured with `BK_VR=0` to avoid a duplicate
-build tree. Restore/rebuild VR before the final package. `vulkaninfo` lists only
-`VK_LAYER_MESA_device_select` and `VK_LAYER_MESA_overlay`; Khronos validation is unavailable. Xvfb/lavapipe smoke has no
-OpenXR runtime and therefore covers only the VR-inactive flat renderer. Device A/B,
-dynamic foveation and stereo GPU corruption checks remain coordinator work.
+- `BUILD_DIR=build-vrtest JOBS=4 tools/docker/build-linux.sh vrtest`: passed, including the
+  production slot-ring header (24,011 checks), existing bridge tests (8,930 checks, zero
+  failures), Banjo profile tests (zero failures), and the one-shot diagnostic launcher suite.
+- `BUILD_DIR=build-linux-aarch64-vr BK_VR=0 JOBS=4 tools/docker/build-linux.sh build`:
+  passed, including an incremental rebuild of the final source. Flat ELF build ID
+  `3d8121293e03aa2b813a14bb4c610669dca77b88`. The same tree was then reconfigured for VR;
+  no second build tree was created.
+- `BK_ROM="/Users/mads/Downloads/Banjo-Kazooie (USA).z64" BK_VR=1 JOBS=4
+  tools/docker/build-linux.sh build`: passed. Final VR ELF build ID
+  `ddd8be02c4d99ceae044568cc9602181f42af91b`.
+- `BK_VR=1 JOBS=4 tools/docker/build-linux.sh package` and `abi`: passed. Package is
+  `build-linux-aarch64-vr/package/BanjoRecompiled/` (24 MiB); packaged executable SHA-256
+  `592b117f176696ef94c2b7dbf9a0332e2c43ec68d205fda5cc67010235d5aa21`.
+  ABI limits passed: executable GLIBC 2.35, bundled SDL 2.34, atomic 2.17, no GLIBCXX.
+- Packaged VR executable with `--game bk`, Xvfb, lavapipe and dummy audio: remained running
+  for 45 seconds (expected timeout status 124). The US ROM was SHA-1 checked, mounted read-only,
+  copied only into a temporary container data directory, and removed with that directory.
+  Log confirms `no OpenXR runtime; VR mode off`, llvmpipe initialization, and Banjo startup.
+  The software driver warns about unsupported `OpGroupNonUniformAllEqual`; no assertion or
+  crash occurred before timeout. This covers game startup and the VR-inactive flat renderer,
+  not headset stereo or player-visible acceptance.
+
+Logs are retained in the existing `build-linux-aarch64-vr/` tree:
+`eye-slots-tests-final.log`, `eye-slots-flat-recovered.log`, `eye-slots-flat-final-build.log`,
+`eye-slots-vr-final-build.log`, `eye-slots-package.log`, `eye-slots-abi.log`,
+`eye-slots-smoke.log`, and `eye-slots-vulkan-info.log`. The temporary host-test build tree
+was removed after preserving its final log. Package metadata identifies the executable
+source above and reports a dirty tree because the pre-existing nativefiledialog pointer and
+bk-decomp line-ending change were preserved, not committed.
+
+`vulkaninfo` lists only `VK_LAYER_MESA_device_select` and `VK_LAYER_MESA_overlay`; Khronos
+validation is unavailable. No DK64 full build was run; its host remains on the legacy path
+through the default opt-in implementation. Device A/B, dynamic foveation and stereo GPU
+corruption checks remain coordinator work. No push or device action was performed.
 
 RT64 paths changed (relative to `lib/rt64`):
 
