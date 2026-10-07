@@ -326,3 +326,44 @@ Set **BanjoVR** to **120 Hz** and resolution **2160** in SteamVR's per-app setti
 ## 8. Wear checklist (about 10 minutes)
 
 See [WEAR_CHECKLIST.md](WEAR_CHECKLIST.md).
+
+## Camera standard migration delivery (2026-10-07)
+
+Source `b34d2b380f58e200aa054076b5be98bd45819522` passed the existing host VR checks, native ARM64 build,
+ABI/dependency closure and package-content/hash checks. Package metadata correctly records the preserved pre-existing nested dependency dirt.
+Successful host/build/ABI command output remained in tool results; persistent
+BUILD-METADATA.json and the final package are retained as build evidence.
+
+The adapter now uses shared sfvr adjustment/defaults conventions, apparent size,
+height, head gain, seated calibration, smooth/snap/off choices and live retained
+world rendering while settings freeze simulation. The existing yaw-only settings
+panel defaults to the right, with left/centre alternatives. Physical left grip
+plus physical right stick adjusts size horizontally and requests camera offsets
+vertically, consumes the stick before game/turn readers, and requires neutral
+after release or focus loss. Gameplay controls retain their existing mappings.
+
+**Incomplete:** negative closer/lower values are saved but those offsets are not
+rendered. The established nonnegative nearer/lower path remains. A safe native
+collision query and guest-state restoration contract for farther/higher movement
+is not established. Automatic approval review rejected the proposed Banjo guest
+call because collision-state restoration was unproven and could corrupt game
+state. No guessed call was substituted or shipped.
+
+Installed `~/devkit-game/BanjoVR/BanjoRecompiled` SHA-256:
+`8ca783a762c08569dd12af4b3e822fdc31c38d219f2a544d53b58be887922cdd`. The booked, idle existing Steam-title launch (raw app ID 2393272997)
+reached SteamVR/OpenXR, 2160x2160 eye swapchains and READY/SYNCHRONIZED; Frame,
+Index and Touch profile suggestions were accepted (23 Frame paths). Only the
+task's native process was stopped. The rewritten VR settings were restored;
+settings/save hashes and modes match the pre-run values.
+
+| Current increment | Evidence level |
+| --- | --- |
+| ARM64 package and Steam boot/session/profile suggestions | verified unattended |
+| New live gameplay preview, physical modifier, tracked recentring and comfort | not worn; preview not captured |
+| Farther/higher camera extension | blocked; negative offsets inactive |
+
+Wear checks: live scale and safe nearer/lower adjustment; neutral release;
+right-side panel readability; pause/settings/resume; recentre and turning. Skip
+negative offsets until a verified native collision adapter exists. Evidence:
+task output `device-camera-migration/BanjoVR/run-stdout.txt` and the cross-port
+report. The smoke boot does not certify gameplay rendering or physical input.
