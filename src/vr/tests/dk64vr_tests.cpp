@@ -529,7 +529,7 @@ static void testSettings() {
     CHECK_NEAR(dk64vr_settings_get(&s, "world_scale"), 15.0, 0.0);
     CHECK_NEAR(dk64vr_settings_get(&s, "hud_distance"), 1.5, 1e-9);
     CHECK_NEAR(dk64vr_settings_get(&s, "turn_mode"), 0.0, 0.0);
-    CHECK_NEAR(dk64vr_settings_get(&s, "snap_angle"), 45.0, 0.0);
+    CHECK_NEAR(dk64vr_settings_get(&s, "snap_angle"), 30.0, 0.0);
     CHECK_NEAR(dk64vr_settings_get(&s, "right_stick_x"), 0.0, 0.0);
     CHECK_NEAR(dk64vr_settings_get(&s, "cutscenes"), 0.0, 0.0);
     CHECK_NEAR(dk64vr_settings_get(&s, "level_pitch"), 1.0, 0.0);
@@ -1781,12 +1781,12 @@ static void testCameraOriginSettings() {
         if (std::strcmp(key, "DK64_VR_CAMERA_CLOSER") == 0) return "9";
         return nullptr;
     }) == 3);
-    CHECK_NEAR(dk64vr_settings_get(&s, "world_scale"), 4, 0);
+    CHECK_NEAR(dk64vr_settings_get(&s, "world_scale"), 3.75, 0);
     CHECK_NEAR(dk64vr_settings_get(&s, "camera_lower"), 1, 0);
     CHECK_NEAR(dk64vr_settings_get(&s, "camera_closer"), 0.8, 1e-6);
     const char *invalid = "[vr]\nport_schema = 5\nworld_scale = 0\ncamera_lower = nan\ncamera_closer = 5\n";
     dk64vr_settings_parse(&s, invalid, strlen(invalid));
-    CHECK_NEAR(s.file_values[dk64vr_settings_index("world_scale")], 4, 0);
+    CHECK_NEAR(s.file_values[dk64vr_settings_index("world_scale")], 3.75, 0);
     CHECK_NEAR(s.file_values[dk64vr_settings_index("camera_lower")], 0, 0);
     CHECK_NEAR(s.file_values[dk64vr_settings_index("camera_closer")], 0.8, 1e-6);
     dk64vr_settings_free(&s);
@@ -1958,7 +1958,7 @@ public:
     bool has(const char *k) const override { return isExtra(k) ? extra : base.has(k); }
     double get(const char *k) const override { return isExtra(k) ? value(k) : base.get(k); }
     double def(const char *k) const override { return isExtra(k) ? 0.0 : base.def(k); }
-    double lo(const char *k) const override { return isExtra(k) ? 0.0 : base.lo(k); }
+    double lo(const char *k) const override { return isExtra(k) ? -1.0 : base.lo(k); }
     double hi(const char *k) const override { return isExtra(k) ? ((std::strcmp(k, "camera_closer") == 0) ? 0.8 : 1.0) : base.hi(k); }
     void set(const char *k, double v) override {
         if (isExtra(k)) {
@@ -2064,7 +2064,7 @@ static void testMenuModel() {
     press(m, nav::Down, t);
     CHECK(m.focusedAct() == "row:snap_angle");
     press(m, nav::Right, t);
-    CHECK_NEAR(dk64vr_settings_get(&s, "snap_angle"), 60.0, 0.0);
+    CHECK_NEAR(dk64vr_settings_get(&s, "snap_angle"), 45.0, 0.0);
     // World size: Right makes Donkey Kong taller (a smaller world_scale), Left back.
     press(m, nav::Down, t);
     CHECK(m.focusedAct() == "row:world_size");
@@ -2099,7 +2099,7 @@ static void testMenuModel() {
     CHECK(m.screen() == menu::Screen::Full && m.tab() == menu::Tab::Comfort);
     std::vector<std::string> comfort = m.visibleRows();
     CHECK(contains(comfort, "world_size") && !contains(comfort, "camera_lower") && !contains(comfort, "camera_closer"));
-    CHECK(m.focusedAct() == "row:turn_mode");
+    CHECK(m.focusedAct() == "row:defaults_profile");
     {
         ExtraSettings more(&s, true);
         menu::Model m2(more, facts);
@@ -2117,7 +2117,7 @@ static void testMenuModel() {
         menu::Input in;
         in.nowS = t + 0.1;
         m2.step(in, p, menu::Layout());
-        CHECK_NEAR(more.closer, 0.4, 1e-9);
+        CHECK_NEAR(more.closer, -0.1, 1e-9);
     }
 
     // Bumpers cycle the five tabs and wrap; the standard's order.
@@ -2149,7 +2149,7 @@ static void testMenuModel() {
     CHECK(m.render(false).find("Reset HUD &amp; menus?") != std::string::npos);
     m.act("def", t + 1.0);
     CHECK_NEAR(dk64vr_settings_get(&s, "hud_distance"), 1.5, 1e-9);
-    CHECK_NEAR(dk64vr_settings_get(&s, "snap_angle"), 60.0, 0.0);  // Comfort untouched
+    CHECK_NEAR(dk64vr_settings_get(&s, "snap_angle"), 45.0, 0.0);  // Comfort untouched
     // An armed Defaults lapses after 3 s.
     m.act("step:hud_distance:1", t + 2.0);
     m.act("def", t + 2.0);
@@ -2167,7 +2167,7 @@ static void testMenuModel() {
     m.showFull(menu::Tab::Comfort);
     m.act("def", t);
     m.act("def", t + 0.1);
-    CHECK_NEAR(dk64vr_settings_get(&s, "snap_angle"), 45.0, 0.0);
+    CHECK_NEAR(dk64vr_settings_get(&s, "snap_angle"), 30.0, 0.0);
 
     // Dependent rows: the game camera on the right stick disables Turning, with the reason.
     m.act("set:right_stick_x:1", t);

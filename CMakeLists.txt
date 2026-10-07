@@ -396,6 +396,8 @@ if (BK_VR)
         ${CMAKE_SOURCE_DIR}/src/vr/game/profile_ext_default.c
         ${CMAKE_SOURCE_DIR}/src/vr/game/banjo_profile_ext.c
         ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_settings.c
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_adjust.c
+        ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_camera.c
         ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_perf.c
         ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_view.c
         ${CMAKE_SOURCE_DIR}/third_party/sfvr/src/sfvr_turn.c

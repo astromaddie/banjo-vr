@@ -43,6 +43,7 @@
 #include "dk64vr_turn.h"
 #include "dk64vr_sched.h"
 #include "dk64vr_settings.h"
+#include "sfvr/sfvr_adjust.h"
 #include "sfvr/sfvr_perf.h"
 #include "../diag/dk64vr_diag.h"
 #include "../menu/dk64vr_menu_ui.h"
@@ -500,7 +501,7 @@ public:
         const double now = monotonicSeconds();
         probing = (setting("probe_seconds") > 0.0) && ((now - sessionStartS) < setting("probe_seconds"));
         updateStereoLatch();
-        if (!probing && stereoLatched && !frozen) {
+        if (!probing && stereoLatched && (!frozen || settingsPreview)) {
             frameMode = RT64::VrFrame::Mode::Stereo;
             frame.eyeWidth = eyeChain[0].width;
             frame.eyeHeight = eyeChain[0].height;
@@ -1183,7 +1184,7 @@ public:
             // pointer (worn, the VR menu in play).
             stepFade();
             const int fadeLevel = int(std::lround(fadeAlpha * float(FadeLevels - 1)));
-            const bool panelShown = !stereoShown && !probing && (!frozen || pausePanel || menuPanel);
+            const bool panelShown = (settingsPreview && vrMenuOpen) || (!stereoShown && !probing && (!frozen || pausePanel || menuPanel));
             if (uiReady && (fadeLevel > 0)) {
                 const float fadeDistance = panelShown ? (float(setting("panel_distance")) + 1.0f) : 0.3f;
                 Pose ahead;
@@ -1245,7 +1246,7 @@ public:
                 }
             }
 
-            panelWanted = !stereoShown;
+            panelWanted = !stereoShown || (settingsPreview && vrMenuOpen);
             panelShownLast = panelShown && panelReady.load();
         }
 
@@ -1909,6 +1910,12 @@ private:
         else {
             if (recentrePending) {
                 recentrePending = false;
+                if (recalibrateHeightPending || (!standingHeightValid && (setting("seated") == 0.0))) {
+                    standingHeightM = headPose.p.y;
+                    standingHeightValid = true;
+                    recalibrateHeightPending = false;
+                }
+                recentreHeadY = headPose.p.y;
                 origin.q = quatFromYaw(quatYaw(headPose.q));
                 origin.p = headPose.p;
                 cinemaAnchored = false;
@@ -1920,6 +1927,9 @@ private:
             // head_translation scales the head's displacement, never the eye offsets (patterns.md).
             const float translation = float(setting("head_translation"));
             headInOrigin.p = { headInOrigin.p.x * translation, headInOrigin.p.y * translation, headInOrigin.p.z * translation };
+            const float seatedCompensation = (setting("seated") != 0.0 && standingHeightValid)
+                ? (standingHeightM - recentreHeadY) : 0.0f;
+            headInOrigin.p.y += float(setting("height_offset")) + seatedCompensation;
         }
 
         Pose yaw;
@@ -1947,6 +1957,18 @@ private:
         if (published && (state.scene != lastScene)) {
             dk64vr_logf("scene: %s -> %s", sceneName(lastScene), sceneName(state.scene));
             lastScene = state.scene;
+        }
+
+        settingsPreview = vrMenuOpen && focused && !synthetic && !probing && published && cameraSeen
+            && (state.scene == DK64VR_SCENE_GAMEPLAY) && stereoLatched && !cinemaActive;
+        if (settingsPreview) {
+            // Simulation stays paused, but RT64 replays its held workload into fresh eye targets.
+            menuPanel = true;
+            frozen = false;
+            pausePanel = false;
+            freezeLiveCount = 0;
+            fadeTarget = 0.0f;
+            return;
         }
 
         bool want;
@@ -2169,7 +2191,8 @@ private:
 
         const dk64vr_game_state state = gameState();
         const float lower = float(setting("camera_lower")), closer = float(setting("camera_closer"));
-        camOffsetActive = (state.scene == DK64VR_SCENE_GAMEPLAY) && camSmoother.focusReady() && (lower != 0.0f || closer != 0.0f);
+        camOffsetActive = (state.scene == DK64VR_SCENE_GAMEPLAY) && camSmoother.focusReady()
+            && cameraOffsetCanRenderWithoutNativeCollision(lower, closer) && (lower != 0.0f || closer != 0.0f);
         if (camSmoother.focusReady()) camFocus = camSmoother.focus(w, level);
         if (camOffsetActive) {
             // One offset correction for every camera projection of both eyes. Apply AFTER
@@ -2326,7 +2349,7 @@ private:
 
     void updateInput(bool renderingNow) {
         const bool live = renderingNow && focused && input.ready() && (synthetic == false);
-        const InputSample s = input.sample(live, localSpace, frameState.predictedDisplayTime);
+        InputSample s = input.sample(live, localSpace, frameState.predictedDisplayTime);
         uiCapturing = recompui::is_context_capturing_input();
         uiMouse = uiCapturing && recompui::is_context_capturing_mouse();
         const dk64vr_game_state state = gameState();
@@ -2334,9 +2357,38 @@ private:
         context.menuOpen = uiCapturing;
         // Turning and view-relative movement in third-person play only (first person turns with
         // the head and the game's own aim).
-        context.stereoPlay = stereoLatched && !frozen && !cinemaActive && (state.scene == DK64VR_SCENE_GAMEPLAY);
+        context.stereoPlay = stereoLatched && !frozen && !cinemaActive && !vrMenuOpen && (state.scene == DK64VR_SCENE_GAMEPLAY);
         context.viewYawRad = moveYawRad();
         const float dt = float(std::min(periodS, 0.1));
+        if (!s.valid) {
+            sfvr_adjust_focus_lost(&adjustmentState);
+        }
+        else {
+            const bool previewContext = vrMenuOpen && stereoLatched && cameraSeen && !probing;
+            const bool adjustmentEligible = live && (state.scene == DK64VR_SCENE_GAMEPLAY) && !cinemaActive
+                && (previewContext || (stereoLatched && !frozen && !vrMenuOpen));
+            sfvr_adjust_config adjustmentConfig;
+            sfvr_adjust_config_default(&adjustmentConfig);
+            const int scaleIndex = dk64vr_settings_index("world_scale");
+            const sfvr_setting_key *scaleKey = dk64vr_settings_key((size_t)scaleIndex);
+            if (scaleKey != nullptr) {
+                adjustmentConfig.world_scale_min = float(scaleKey->min);
+                adjustmentConfig.world_scale_max = float(scaleKey->max);
+            }
+            float worldScale = float(setting("world_scale"));
+            float cameraCloser = float(setting("camera_closer"));
+            float cameraLower = float(setting("camera_lower"));
+            if (sfvr_adjust_update(&adjustmentState, &adjustmentConfig, s.rStick, s.lGrip ? 1 : 0,
+                    adjustmentEligible ? 1 : 0, s.menu ? 1 : 0, s.view ? 1 : 0, displayS,
+                    &worldScale, &cameraCloser, &cameraLower)) {
+                dk64vr_settings_set(&settings, "world_scale", worldScale);
+                dk64vr_settings_set(&settings, "camera_closer", cameraCloser);
+                dk64vr_settings_set(&settings, "camera_lower", cameraLower);
+                settingsDirty = true;
+                settingsDirtyS = displayS;
+                menu::uiRefreshSettings(settings);
+            }
+        }
         InputResult r = mapper.update(s, inputConfig(), context, displayS, dt);
         // Diagnostic: right stick X held at diag_turn_stick for 4 s, released for 4 s, in
         // stereo play, as the mapper would turn with it (snap: one step a hold).
@@ -2379,6 +2431,11 @@ private:
         if (r.recentre) {
             recentrePending = true;
             dk64vr_logf("recentre: View held");
+        }
+        if (r.recalibrateHeight) {
+            recalibrateHeightPending = true;
+            recentrePending = true;
+            dk64vr_logf("height: standing calibration requested");
         }
 
         if (r.systemBuzz) {
@@ -2954,7 +3011,17 @@ private:
     }
 
     Pose panelPose() const {
-        const Pose turned = poseMul(origin, Pose { quatFromYaw(panelYawRad), {} });
+        float sideYaw = 0.0f;
+        if (vrMenuOpen) {
+            const int side = int(setting("settings_page_side"));
+            if ((side == 1 || side == 2) && panelChain.width != 0) {
+                const float distance = std::max(0.1f, float(setting("panel_distance")));
+                const float halfWidth = 0.5f * float(setting("panel_width"));
+                const float angle = std::atan2(halfWidth, distance) + 10.0f * 3.1415926f / 180.0f;
+                sideYaw = (side == 2) ? -angle : angle;
+            }
+        }
+        const Pose turned = poseMul(origin, Pose { quatFromYaw(panelYawRad + sideYaw), {} });
         return poseMul(turned, Pose { Quat(), { 0.0f, 0.0f, -float(setting("panel_distance")) } });
     }
 
@@ -3554,6 +3621,10 @@ private:
 
     Pose origin;
     bool recentrePending = true;
+    bool recalibrateHeightPending = false;
+    bool standingHeightValid = false;
+    float standingHeightM = 0.0f;
+    float recentreHeadY = 0.0f;
     Pose eyeInHead[2];
     // Camera-facing billboards from the game profile, and the point they face in this eye pass.
     std::vector<RT64::VrBillboardGroup> billboardGroupList;
@@ -3613,6 +3684,7 @@ private:
 
     XrInput input;
     InputMapper mapper;
+    sfvr_adjust_state adjustmentState = {};
     std::mutex inputMutex;
     InputResult latestInput;
     std::atomic<bool> focused = false;
@@ -3629,6 +3701,7 @@ private:
     double uiRequestUntilS = 0.0;
     bool panelShownLast = false;
     bool frozen = false;          // transitions and pause: the last stereo images held
+    bool settingsPreview = false; // paused VR settings keep the live native camera in both eyes
     bool pausePanel = false;      // the pause menu's panel over the frozen world
     bool menuPanel = false;       // a recomp menu's panel over the frozen world
     uint32_t freezeLiveCount = 0, pauseCount = 0;

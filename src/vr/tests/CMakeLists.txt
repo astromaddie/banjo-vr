@@ -19,6 +19,8 @@ add_executable(dk64vr_tests
     ${CMAKE_CURRENT_LIST_DIR}/test_profile_dk64.c
     ${DK64VR_ROOT}/src/vr/game/profile_ext_default.c
     ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_settings.c
+    ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_adjust.c
+    ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_camera.c
     ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_view.c
     ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_turn.c
     ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_haptics.c)
@@ -52,6 +54,7 @@ add_executable(comfort_turn_tests
     ${DK64VR_ROOT}/src/vr/game/vr_control.cpp
     ${DK64VR_ROOT}/src/vr/bridge/dk64vr_turn.cpp
     ${DK64VR_ROOT}/src/vr/bridge/dk64vr_math.cpp
+    ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_camera.c
     ${DK64VR_ROOT}/src/vr/bridge/dk64vr_input.cpp
     ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_view.c
     ${DK64VR_ROOT}/third_party/sfvr/src/sfvr_turn.c)
