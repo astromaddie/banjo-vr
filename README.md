@@ -4,11 +4,11 @@
 
 | Evidence | Verified status |
 | --- | --- |
-| Host/source | ROM-free production VR bridge, Banjo profile/comfort-turn imports and RT64 eye-slot tests compiled on macOS ARM64; CTest 4/4 passed on 2026-10-11 from base `b426f05f3722a4e947a5c224601e906eff158c65` plus the PR0 changes. The public [ROM-free workflow](.github/workflows/public-vr-validation.yml) is configured without secrets; no remote GitHub run has been observed. |
+| Host/source | ROM-free production VR bridge, Banjo profile/comfort-turn imports and RT64 eye-slot tests compiled on macOS ARM64; CTest 4/4 passed on 2026-10-11 for the PR0 production-source changes. The public [ROM-free workflow](.github/workflows/public-vr-validation.yml) is configured without secrets; the Ubuntu 22.04 GitHub run passed at the immutable source commit in PR0_METADATA.json. |
 | Unattended Frame | Prior off-head runs verified OpenXR lifecycle, scene routing, stereo views, pause/menu paths and diagnostics at 2160×2160. Device profiles were accepted; real button input reaching the game was not confirmed. |
 | Worn | No Banjo build has been worn; focused wearer acceptance remains pending. |
 
-**Known failures and limits:** physical button input and wearer comfort are unverified; 120 Hz and current-source worn performance are unmeasured. No complete application or package build is claimed. Tested source is the base above plus the PR0 change set; the coordinator will record the integrated source commit.
+**Known failures and limits:** physical button input and wearer comfort are unverified; 120 Hz and current-source worn performance are unmeasured. No complete application or package build is claimed. Immutable tested source and CI run are recorded in [PR0 metadata](docs/PR0_METADATA.json).
 
 **External game data:** a personally owned North American 1.0 Banjo-Kazooie ROM is required for a complete build and gameplay. ROM and generated game data stay outside Git and CI artifacts.
 
@@ -30,3 +30,5 @@ BK_ROM="/path/to/owned-us-rom.z64" BK_VR=1 JOBS=4 tools/docker/build-linux.sh al
 This fork used OpenAI Codex to assist with VR source, tests and readiness documentation; disclosed AI assistance is allowed here subject to review. The upstream AI restriction applies to submissions to the official project. See [the scoped contribution policy](CONTRIBUTING.md) and [the original upstream policy retained verbatim](CONTRIBUTING_UPSTREAM.md).
 
 See [PR0 readiness and evidence](docs/PR0_READINESS.md), [VR architecture and wearer checklist](docs/VR_ARCHITECTURE.md), and the [README retained for history](docs/README_PRE_PR0.md). Upstream licenses and notices remain in their original files.
+
+The host application retains its upstream [GPLv3 notice](COPYING); RT64 and Plume retain their own MIT notices. These code licenses do not grant permission to redistribute the commercial game, ROMs or extracted media. Immutable source/CI identity is in [PR0 metadata](docs/PR0_METADATA.json).
