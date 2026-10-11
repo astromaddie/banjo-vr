@@ -1,17 +1,10 @@
 # Banjo VR (Steam Frame) architecture
 
-Current state of the VR layer in this fork of Banjo: Recompiled (N64Recomp + RT64 +
-N64ModernRuntime). All VR code is behind the CMake option `BK_VR`; with it off the flat build is
-unchanged (the game side's `vr_api.cpp` and profile are compiled in both, inert until the
-renderer calls `dk64vr_set_active(1)`).
-
-The renderer side is a port of Donkey Kong 64 VR (`~/code/dk64-vr`, `steam-frame` 1fa9ccb);
-`dk64-vr/docs/VR_ARCHITECTURE.md` describes the shared mechanics in full (frame protocol, eye
-camera, depth/fog remap, camera smoothing, foveation, HUD split, cinema, menus, settings menu).
-This document records what is Banjo-specific and the honest status. The game side (scene
-reports, culling, profile) is described in [VR_GAME_SIDE.md](VR_GAME_SIDE.md).
-
-**Nothing here has been worn.** Every row in the status table is at most "verified unattended".
+This fork adds native OpenXR stereo rendering to Banjo: Recompiled. The optional VR renderer is
+enabled with `BK_VR`; flat mode remains the default. The game integration, Banjo profile and
+shared renderer are described here, with Banjo's scene rules and camera details in
+[VR_GAME_SIDE.md](VR_GAME_SIDE.md). The DK64 architecture document covers mechanics shared by
+both ports, including the OpenXR frame loop, eye rendering, HUD, cinema, menus and settings.
 
 ## 1. Target and probe facts
 
