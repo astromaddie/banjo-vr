@@ -53,9 +53,21 @@ check_rom() {
 	[[ "$have" == "$want_sha1" ]] || { echo "$BK_ROM is not the US ROM (sha1 $have, want $want_sha1)" >&2; exit 1; }
 }
 
+prepare_vr_dependencies() {
+	bash "$repo/tools/vr/prepare-public-dependencies.sh"
+}
+
 case "$step" in
 	image) docker build -t "$image" -f "$repo/tools/docker/linux.Dockerfile" "$repo/tools/docker" ;;
-	tools | recomp | build | package | abi | vrtest) run_step "$step" ;;
+	tools | recomp | package | abi) run_step "$step" ;;
+	build)
+		if [[ "${BK_VR:-0}" == 1 ]]; then prepare_vr_dependencies; fi
+		run_step "$step"
+		;;
+	vrtest)
+		prepare_vr_dependencies
+		run_step "$step"
+		;;
 	rom)
 		check_rom
 		# Read-only mount: the ROM is never copied anywhere on the host.
@@ -71,6 +83,7 @@ case "$step" in
 		;;
 	all)
 		check_rom
+		if [[ "${BK_VR:-0}" == 1 ]]; then prepare_vr_dependencies; fi
 		"$0" image
 		"$0" tools
 		"$0" rom

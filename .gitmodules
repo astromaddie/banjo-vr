@@ -3,8 +3,7 @@
 	url = https://github.com/N64Recomp/N64ModernRuntime
 [submodule "lib/rt64"]
 	path = lib/rt64
-	url = https://github.com/astromaddie/dk64-vr-rt64.git
-	branch = steam-frame
+	url = https://github.com/rt64/rt64.git
 [submodule "lib/bk-decomp"]
 	path = lib/bk-decomp
 	url = https://gitlab.com/banjo.decomp/banjo-kazooie
