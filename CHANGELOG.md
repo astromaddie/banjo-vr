@@ -6,3 +6,9 @@
 - Replaced the private RT64 pin with its public upstream base plus SHA-256-pinned RT64/Plume VR source overlays.
 - Scoped the upstream AI policy to upstream submissions and disclosed Codex-assisted fork work.
 - No public build or release was made. Full native builds still require a locally supplied game ROM.
+
+## 2026-10-11 — Current-source PR0 verification
+
+- Updated the tested source to `2e3c67cd23502bb06943a8ddd8dc199faa7645a5`; ROM-free production-source CMake/CTest passed 4/4 locally with public pinned dependencies.
+- The latest exact-source GitHub job did not start because of the account billing/spending-limit block; the earlier successful run is retained in PR0_METADATA.json.
+- No full ARM64 application build was run because the scoped project/build inventory contained no supported game ROM.
