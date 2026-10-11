@@ -14,29 +14,9 @@ This is my Steam Frame fork of [Banjo: Recompiled](https://github.com/BanjoRecom
 
 The renderer and game-side changes are described in [VR architecture](docs/VR_ARCHITECTURE.md) and [Banjo's game-specific VR integration](docs/VR_GAME_SIDE.md). Detailed implementation notes and test history stay in those documents.
 
-## Build
+## Build and install
 
-Use Docker on ARM64 Linux or an ARM64 Docker environment on Apple Silicon. The build script creates its pinned compiler image and packages the game.
-
-For a complete Linux ARM64 build, provide your own supported ROM and run:
-
-```sh
-git clone --recurse-submodules --branch steam-frame https://github.com/astromaddie/banjo-vr.git
-cd banjo-vr
-export BK_ROM="/path/to/owned-us-rom.z64"
-BK_VR=1 JOBS=4 tools/docker/build-linux.sh all
-```
-
-The build checks the ROM against the expected image before generating game code. See [BUILDING.md](BUILDING.md) for the upstream build prerequisites and steps. The ROM and generated game data stay outside Git and CI artifacts.
-
-To copy the package to your Frame, register it in the Steam library, and copy your own ROM, set the Frame's SSH address and run:
-
-```sh
-FRAME_HOST="steamos@YOUR_FRAME_ADDRESS" tools/steam_frame/deploy.sh \
-  --package build-linux-aarch64-vr/package/BanjoRecompiled --rom "$BK_ROM"
-```
-
-Launch BanjoVR from the Frame's Steam library so it receives controller input.
+The [Steam Frame build and install guide](docs/STEAM-FRAME-BUILD-INSTALL.md) covers ARM64 Docker builds from Linux, macOS, or Windows through WSL2, the supported ROM, package output, first installation and Steam launch. It distinguishes the standalone Linux ARM64 Frame package from Windows or desktop builds. The upstream [BUILDING.md](BUILDING.md) is a desktop recompiler guide, not the Steam Frame packaging route. The ROM and generated game data stay outside Git and CI artifacts.
 
 ## ROM-free VR checks
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds Banjo: Recompiled for Linux inside the pinned environment from linux.Dockerfile. The
-# target architecture is the Docker host's: arm64 on Apple Silicon, which is the Steam Frame's.
+# target architecture is the Docker image's. Set DOCKER_PLATFORM=linux/arm64 to build for the
+# Steam Frame from an x86-64 Docker host with ARM64 emulation enabled.
 # Build files go to build-linux-<arch>/ in the repository (gitignored), and so do the generated
 # recompiler outputs (RecompiledFuncs/, RecompiledPatches/, rsp/n_aspMain.cpp) and the
 # decompressed ROM in the repository root. None of them is ever committed.
@@ -26,6 +27,7 @@ set -euo pipefail
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
 # The image is the one the DK64 port builds from the same Dockerfile.
 image="${BK_VR_IMAGE:-dk64-vr-linux}"
+docker_platform="${DOCKER_PLATFORM:-}"
 step="${1:-all}"
 want_sha1="1fe1632098865f639e22c11b9a81ee8f29c75d7a"
 
@@ -37,8 +39,19 @@ done
 
 in_container() {
 	local extra=("$@")
-	docker run --rm -v "$repo":/src -w /src ${env_args[@]+"${env_args[@]}"} \
+	local platform_args=()
+	[[ -z "$docker_platform" ]] || platform_args+=(--platform "$docker_platform")
+	docker run ${platform_args[@]+"${platform_args[@]}"} --rm -v "$repo":/src -w /src ${env_args[@]+"${env_args[@]}"} \
 		${extra[@]+"${extra[@]}"} "$image" tools/docker/container-steps.sh "$STEP"
+}
+
+build_image() {
+	if [[ -n "$docker_platform" ]]; then
+		docker buildx build --platform "$docker_platform" --load -t "$image" \
+			-f "$repo/tools/docker/linux.Dockerfile" "$repo/tools/docker"
+	else
+		docker build -t "$image" -f "$repo/tools/docker/linux.Dockerfile" "$repo/tools/docker"
+	fi
 }
 
 run_step() {
@@ -58,7 +71,7 @@ prepare_vr_dependencies() {
 }
 
 case "$step" in
-	image) docker build -t "$image" -f "$repo/tools/docker/linux.Dockerfile" "$repo/tools/docker" ;;
+	image) build_image ;;
 	tools | recomp | package | abi) run_step "$step" ;;
 	build)
 		if [[ "${BK_VR:-0}" == 1 ]]; then prepare_vr_dependencies; fi
