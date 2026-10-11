@@ -4,6 +4,8 @@ This is my Steam Frame fork of [Banjo: Recompiled](https://github.com/BanjoRecom
 
 **EXPERIMENTAL.** This is a personal-use project and is still a work in progress. You need the supported US 1.0 Banjo-Kazooie ROM from your own copy of the game. The repository contains source and build tools, not the ROM or generated game data.
 
+**Want to play on Steam Frame?** Download the prebuilt standalone package from the [v0.1.0 prerelease](https://github.com/astromaddie/banjo-vr/releases/tag/v0.1.0); no compiler is needed. You still need the supported US 1.0 Banjo-Kazooie ROM from your own copy.
+
 ## What the Frame fork adds
 
 - A tracked stereo world, with the game HUD and menus kept on a readable panel.
