@@ -100,6 +100,10 @@ extern "C" void recomp_vr_publish_game_state(uint8_t *rdram, recomp_context *ctx
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 }
+extern "C" void recomp_vr_manual_camera(uint8_t *rdram, recomp_context *ctx) {
+    (void)rdram;
+    _return(ctx, (dk64vr_is_active() && dk64vr_manual_camera()) ? 1 : 0);
+}
 extern "C" void recomp_vr_take_turn(uint8_t *rdram, recomp_context *ctx) {
     (void)rdram;
     const bool applicable = _arg<0, int>(rdram, ctx) != 0

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-13 — Manual camera setting
+
+- Added `camera_auto_rotate` (VR settings, Comfort: "Automatic camera turning"). Off keeps Banjo's free orbit camera, so the view turns only from the right stick, C buttons or R; camera collision is the game's own. Not worn.
+
 ## 2026-10-11 — PR0 readiness preparation
 
 - Added experimental Steam Frame status, readiness evidence and a public ROM-free VR host-test workflow.

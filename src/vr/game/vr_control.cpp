@@ -54,6 +54,18 @@ extern "C" void dk64vr_clear_turn(void) {
     g_turn_requests.degrees = 0;
 }
 
+namespace {
+std::atomic<int> g_manual_camera{0};
+}
+
+extern "C" void dk64vr_set_manual_camera(int manual) {
+    g_manual_camera.store(manual != 0 ? 1 : 0, std::memory_order_relaxed);
+}
+
+extern "C" int dk64vr_manual_camera(void) {
+    return g_manual_camera.load(std::memory_order_relaxed);
+}
+
 extern "C" void dk64vr_request_hud_diag(void) {
     g_hud_diag.store(1);
 }

@@ -37,6 +37,9 @@ DECLARE_FUNC(void, recomp_vr_publish_game_state, const VrGameState*);
 DECLARE_FUNC(s32, recomp_vr_diag_save_in_play);
 // Positive degrees turn right. A rejected poll drops pending input and clears host orbit.
 DECLARE_FUNC(s32, recomp_vr_take_turn, s32 applicable);
+// Nonzero while the camera should turn only when the player turns it (setting
+// camera_auto_rotate off). Always 0 without the VR renderer.
+DECLARE_FUNC(s32, recomp_vr_manual_camera);
 
 #ifdef MIPS
 void vr_frame_hook(void);

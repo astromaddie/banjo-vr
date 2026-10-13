@@ -265,6 +265,26 @@ power-1.5 response and default 120 deg/s; release stops the shown heading immedi
 the native camera catches up. `right_stick_x = camera` retains the game's C-left/C-right swing.
 Previously saved explicit `camera` settings remain explicit; fresh/missing keys default to `turn`.
 
+**Manual camera (`camera_auto_rotate` off; VR settings, Comfort: "Automatic camera turning").**
+Banjo's follow cameras (dynamic states 1, 3, 4, 0xB) swing behind him; the R-look orbit `0x13`
+does not: its yaw only eases to the target `D_8037DBA4` and its position is placed from the
+focus at that yaw (`ncDynamicCam13_update`). With the setting off, `vr_apply_comfort_turn` takes
+the orbit as soon as a camera would accept a turn, at the yaw it has, and
+`vr_comfort_camera_held` keeps it instead of releasing it when a turn arrives or after 8 s. The
+host sets the flag from the setting (`dk64vr_set_manual_camera`); the patch reads
+`recomp_vr_manual_camera` (import `0x8F0000E4`), 0 outside VR. Holding R still recentres behind
+Banjo and C-left/C-right still swing: both release the orbit, and it is taken again at the new
+yaw (a swing still running when R is let go is finished, not stopped). The orbit's own collision
+is untouched: when the camera hits something the game re-derives the yaw from where it ended up
+(`func_802BE60C` / `func_802C069C`), and with no turn pending that yaw is kept rather than swung
+back. The same rejections as turning apply, so node, climbing, spline and scripted cameras keep
+control. Flight and swimming use the orbit too, so the camera no longer turns with Banjo there.
+
+Checked: host tests (settings, 1,420 turn checks unchanged) and the ARM64 build. Two unattended
+Steam runs on the Frame (2026-10-13, setting on and off) started and ran identically, but the
+autostart spot on Spiral Mountain is a camera node (dynamic state 0x11, mode 9) that rejects
+turns, so the hold itself was **not exercised on the device**. Headset-unverified.
+
 Rejected cameras do nothing: missing/disabled player/camera, non-gameplay scenes, first person,
 pause/frozen world, scripted/static/random cameras, camera nodes (dynamic 8 / 0x11), spline
 0x12, climbing 0x10, C-swing 0xA, and other action/locked states outside the whitelist

@@ -57,10 +57,14 @@ s32 vr_comfort_camera_active(void) {
 // The native selector still checks camera nodes first, so this cannot override a locked room.
 s32 vr_comfort_camera_held(void) {
     if (!recomp_vr_is_active() || !vr_turn_owned) return 0;
-    if (!vr_turn_allowed(ncCamera_getType()) || ncDynamicCamera_getState() != 0x13 || vr_turn_age > 8.0f
+    // Manual camera (camera_auto_rotate off): the orbit is kept for as long as a turn would be
+    // accepted, not only until the turn arrives, so the follow camera never swings behind Banjo.
+    s32 manual = recomp_vr_manual_camera();
+    if (!vr_turn_allowed(ncCamera_getType()) || ncDynamicCamera_getState() != 0x13
+        || (!manual && vr_turn_age > 8.0f)
         || bakey_held(BUTTON_R) || bainput_should_rotate_camera_left()
         || bainput_should_rotate_camera_right()
-        || mlAbsF(vr_turn_remaining) < 0.01f) {
+        || (!manual && mlAbsF(vr_turn_remaining) < 0.01f)) {
         vr_turn_owned = 0;
         return 0;
     }
@@ -94,7 +98,10 @@ void vr_apply_comfort_turn(s32 camera_type) {
         s32 degrees = recomp_vr_take_turn(allowed);
         if (!allowed) vr_turn_owned = 0;
         vr_turn_age += time_getDelta();
-        if (degrees != 0) {
+        // Manual camera: take the orbit as soon as a free camera would accept a turn, at the yaw
+        // it has now, and keep it (vr_comfort_camera_held).
+        s32 manual = recomp_vr_manual_camera();
+        if (degrees != 0 || (manual && allowed && !vr_turn_owned)) {
             s32 previous = ncDynamicCamera_getState();
             s32 starting = !vr_turn_owned;
             // Ownership before init preserves target/radius even with desktop analog off.
@@ -104,12 +111,22 @@ void vr_apply_comfort_turn(s32 camera_type) {
             ncDynamicCamera_setState(0x13);
             func_80291488(4);
             if (starting || previous != 0x13) vr_turn_last_yaw = D_8037DBA8;
+            // Taken over mid-swing (R was just let go): finish that swing instead of stopping.
+            if (manual && starting && previous == 0x13) {
+                vr_turn_remaining = mlDiffDegF(D_8037DBA4, D_8037DBA8);
+            }
             vr_turn_remaining -= degrees;
         }
         if (allowed && vr_turn_owned) {
             // Retain an unwrapped debt. The native follower takes shortest wrapped angles;
             // a nearby proxy target keeps it moving in the requested direction even if the
             // host gets a whole revolution ahead (smooth speed may exceed native 160 deg/s).
+            // Manual camera with nothing left to turn: a wall that pushes the orbit round is
+            // not debt, so the camera stays where the wall left it instead of swinging back.
+            if (manual && mlAbsF(vr_turn_remaining) < 0.01f) {
+                vr_turn_remaining = 0.0f;
+                vr_turn_last_yaw = D_8037DBA8;
+            }
             vr_turn_remaining -= mlDiffDegF(D_8037DBA8, vr_turn_last_yaw);
             vr_turn_last_yaw = D_8037DBA8;
             D_8037DBA4 = mlNormalizeAngle(D_8037DBA8

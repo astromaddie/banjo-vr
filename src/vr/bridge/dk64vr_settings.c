@@ -54,6 +54,10 @@ static sfvr_setting_key port_keys[] = {
 	{ "camera_smoothing", SFVR_SETTING_ENUM, 2.0, 0.0, 3.0, camera_smoothing_values },
 	// Right stick X: a comfort turn (turn_mode, snap_angle: turns the game camera's heading at
 	// once) or the game's own C-left/C-right camera swing.
+	// Off: the camera turns only when the wearer turns it (right stick, C buttons, R). The game
+	// keeps its free orbit camera instead of the one that swings behind the player; its wall
+	// handling still applies.
+	{ "camera_auto_rotate", SFVR_SETTING_BOOL, 1.0, 0.0, 1.0, NULL },
 	{ "right_stick_x", SFVR_SETTING_ENUM, 0.0, 0.0, 1.0, right_stick_values },
 	// The left stick moves relative to where you look (move_relative: head or a hand) instead
 	// of relative to the game camera.

@@ -30,6 +30,12 @@ int dk64vr_take_turn_if_applicable(int applicable);
 int dk64vr_turn_applicable(void);
 void dk64vr_clear_turn(void);
 
+// Manual camera (setting camera_auto_rotate off): set by the host from the setting, read by the
+// camera patch through recomp_vr_manual_camera (patches/vr_turn.c), which then keeps Banjo's
+// free orbit camera instead of the follow camera. Always 0 without the VR renderer.
+void dk64vr_set_manual_camera(int manual);
+int dk64vr_manual_camera(void);
+
 // Diagnostic (diag_hud_seconds): ask the game to show its HUD counters once, through its own
 // "show this counter" function, so an unattended run can dump the HUD. Taken by vr_frame_hook.
 void dk64vr_request_hud_diag(void);
