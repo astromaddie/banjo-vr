@@ -54,6 +54,11 @@ static sfvr_setting_key port_keys[] = {
 	{ "camera_smoothing", SFVR_SETTING_ENUM, 2.0, 0.0, 3.0, camera_smoothing_values },
 	// Right stick X: a comfort turn (turn_mode, snap_angle: turns the game camera's heading at
 	// once) or the game's own C-left/C-right camera swing.
+	// A tube's phosphor stripes and scanlines over the eye images (docs/VR_ARCHITECTURE.md "Phosphor mask"):
+	// strength 0-1 (default 0.5; 0 = off, the plain eye copy) and the width of one red-green-blue triad in
+	// degrees. Read from the direction looked in, so both eyes see the same mask.
+	{ "phosphor", SFVR_SETTING_FLOAT, 0.5, 0.0, 1.0, NULL },
+	{ "phosphor_size", SFVR_SETTING_FLOAT, 0.25, 0.15, 1.0, NULL },
 	// Off: the camera turns only when the wearer turns it (right stick, C buttons, R). The game
 	// keeps its free orbit camera instead of the one that swings behind the player; its wall
 	// handling still applies.

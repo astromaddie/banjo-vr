@@ -266,6 +266,19 @@ origin even when the first rendered projection is the rebased sky.
   Real input, collisions during compensated orbit, transformations/flight in
   actual maps and worn comfort remain acceptance work.
 
+### 5e. Phosphor mask (`phosphor`, `phosphor_size`)
+
+The same optional mask as DK64 VR (its `docs/VR_ARCHITECTURE.md`, section 5e, has the design):
+red, green and blue stripes and scanlines over the eyes that look into the world, read from the
+direction a pixel looks in, in the room, so both eyes see the same mask and it fuses at infinity.
+`phosphor` 0-1 (default 0.5; 0 = off, the plain eye copy), `phosphor_size` one triad's width in degrees
+(default 0.25). VR settings, Display: "CRT phosphors", "Phosphor size". It replaces the eye
+copy's pixel shader (`VrEyePhosphorPS.hlsl`, `VrHost::eyeOverlay`), so it adds no pass. Not on
+the cinema's screen views, the panel or the HUD quad.
+
+Status: host-tested (mask maths, constants, settings, rows) and the ARM64 build. Not run on the
+device in this port; headset-unverified.
+
 ## 6. Status
 
 "Unattended" means a Steam launch on the Frame (`steam.pipe`) with `force_render`, checked in logs

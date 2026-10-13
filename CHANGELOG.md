@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-14 — Phosphor mask
+
+- Added `phosphor` and `phosphor_size` (VR settings, Display: "CRT phosphors", "Phosphor size"): red, green and blue stripes and scanlines over the world, the same for both eyes. On at 0.5 by default. Not yet run on the Frame in this port.
+- The RT64 VR overlay patch and its pinned hash changed for the new eye shader.
+
 ## 2026-10-13 — Manual camera setting
 
 - Added `camera_auto_rotate` (VR settings, Comfort: "Automatic camera turning"). Off keeps Banjo's free orbit camera, so the view turns only from the right stick, C buttons or R; camera collision is the game's own. Not worn.

@@ -8,7 +8,7 @@ rt64_base=43373749dac9bbc1b653e6a02aed40a9e1783bed
 plume_base=d890ac899e505fb30040e037a4037cdeca68f033
 rt64_patch="$repo/third_party/vr-dependencies/rt64-vr.patch"
 plume_patch="$repo/third_party/vr-dependencies/plume-vr.patch"
-rt64_patch_sha256=e1aa7dd33453ec9e61a4e023fa81d455bf7e4b106911423da10b48e1b4db5eaa
+rt64_patch_sha256=858457acf00b267bb73f0ecdd49178d46669acd88a5aac2229150f8ab2473b04
 plume_patch_sha256=99fbdb9731416e35cbc5854bf977cf8fc3679655246462f6e6fed145d18294db
 
 check_hash() {
